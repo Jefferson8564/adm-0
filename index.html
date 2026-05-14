@@ -201,6 +201,27 @@
         .ordem-handle { font-size:20px;color:#4a3a6a;cursor:grab;padding:4px 6px;flex-shrink:0;line-height:1; }
         .ordem-handle:active { cursor:grabbing;color:#8b5cf6; }
         .ordem-num { font-size:12px;font-weight:800;color:#6b5c8a;min-width:24px;text-align:right;flex-shrink:0; }
+
+        /* ═══════════════════════════════════════════════════
+           LAYOUT NOTEBOOK / DESKTOP (≥900px)
+           ═══════════════════════════════════════════════════ */
+        @media (min-width: 900px) {
+            #adminApp { display: flex !important; height: 100vh; overflow: hidden; }
+            #notebookMain { display: flex !important; flex-direction: column; flex: 1; overflow: hidden; background: #1c0e08; }
+            .header { position: relative !important; top: auto !important; left: auto !important; right: auto !important; border-radius: 0 !important; padding: 14px 24px !important; box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important; flex-direction: row !important; justify-content: flex-start !important; gap: 24px !important; }
+            #notebookContent { flex: 1; overflow-y: auto; overflow-x: hidden; }
+            #homeScreen { padding-top: 24px !important; max-width: none !important; padding-left: 28px !important; padding-right: 28px !important; }
+            .home-grid-2col { grid-template-columns: repeat(3, 1fr) !important; }
+            #innerApp { height: 100%; }
+            .back-area { padding: 14px 24px; background: #130b22; border-bottom: 1px solid #2e1f4a; }
+            .section { padding: 20px 28px; max-width: none !important; }
+            .card-box { max-width: 640px; }
+            #clientList { grid-template-columns: repeat(4, 1fr) !important; }
+            #coordenadaClienteList { grid-template-columns: repeat(4, 1fr) !important; }
+            #headerSalgados { padding: 12px 28px !important; }
+        }
+
+
     </style>
 <script>
 const VAPID_PUBLIC_KEY = 'BHz14H_rt9dRH7qr0KHoyP0xTbOMztpGXeGbcULrLuDiB1QblCqIbZ6So4TG7UgWXAJCoVVoFyj8LJ57fVhjhBM';
@@ -271,6 +292,9 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
 
 <div id="adminApp" style="display:none;">
 
+    <!-- ÁREA PRINCIPAL (header + conteúdo) -->
+    <div id="notebookMain">
+
     <div class="header" id="mainHeader" style="flex-direction:column;gap:10px;padding-bottom:12px;">
         <div style="display:flex;flex-direction:column;align-items:center;">
             <span class="header-fiado-label">📋 Total em Aberto</span>
@@ -279,6 +303,8 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
                 onclick="abrirModalEditarSaldoCliente()">R$ 0,00</span>
         </div>
     </div>
+
+    <div id="notebookContent">
 
     <!-- HOME: cards de navegação -->
     <div id="homeScreen">
@@ -824,6 +850,26 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const ADMIN_NUM = "81996603348";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ===== WHATSAPP: usa app/PWA instalado no desktop, api no mobile =====
+function wppUrl(phone, text) {
+    const encoded = encodeURIComponent(text);
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+        // iOS: abre direto no app
+        return `whatsapp://send?phone=55${phone}&text=${encoded}`;
+    }
+    if (/Android/i.test(ua)) {
+        // Android: intent força abrir direto no app sem seletor
+        return `intent://send?phone=55${phone}&text=${encoded}#Intent;scheme=whatsapp;package=com.whatsapp;end`;
+    }
+    // Desktop: WhatsApp Web
+    return `https://web.whatsapp.com/send?phone=55${phone}&text=${encoded}`;
+}
+
+function abrirWpp(phone, text) {
+    window.open(wppUrl(phone, text), '_blank');
+}
+
 // ===== CALCULA VALOR REAL DO PEDIDO PELOS ITENS =====
 async function calcularValorRealPedido(itemsTexto) {
     if (!itemsTexto) return 0;
@@ -982,7 +1028,12 @@ function openSection(section) {
     history.pushState({ page: 'section', section: section }, '');
     document.getElementById('homeScreen').style.display = 'none';
     document.getElementById('innerApp').style.display = 'block';
-    document.getElementById('mainHeader').style.display = 'none';
+    // Em notebook, manter header sempre visível
+    if (window.innerWidth >= 900) {
+        document.getElementById('mainHeader').style.display = 'flex';
+    } else {
+        document.getElementById('mainHeader').style.display = 'none';
+    }
     document.getElementById('headerSalgados').style.display = section === 'pedidos' ? 'block' : 'none';
     pararRealtimePedidos();
     if (_homeRealtimeChannel) { sb.removeChannel(_homeRealtimeChannel); _homeRealtimeChannel = null; }
@@ -1321,10 +1372,10 @@ function abrirDetalheCliente(phone) {
                 style="flex:1;padding:11px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:14px;font-size:14px;font-weight:800;color:white;cursor:pointer;">
                 👑 Cupom 👑
             </button>
-            <a id="detalheWppBtn" href="https://wa.me/55${c.phone}" target="_blank"
-                style="flex:1;padding:11px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:14px;font-size:14px;font-weight:800;color:white;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <button id="detalheWppBtn" onclick="abrirWpp('${c.phone}','')"
+                style="flex:1;padding:11px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:14px;font-size:14px;font-weight:800;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
                 👁️ Ver Cliente
-            </a>
+            </button>
         </div>`;
 
     const modal = document.getElementById('modalDetalheCliente');
@@ -1743,7 +1794,7 @@ async function executarPayDebt(phone, val) {
 
     // Abre o WhatsApp direto com o comprovante
     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-    window.open(`https://api.whatsapp.com/send?phone=55${phone}&text=${encodeURIComponent(_cabecalhoWpp + comprovante)}`, '_blank');
+    abrirWpp(phone, _cabecalhoWpp + comprovante);
 }
 
 function enviarComprovanteWpp() {
@@ -1751,7 +1802,7 @@ function enviarComprovanteWpp() {
     closeToast();
     if (!phone || !texto) return;
     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-    window.open(`https://api.whatsapp.com/send?phone=55${phone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+    abrirWpp(phone, _cabecalhoWpp + texto);
     _comprovanteTemp = { phone: null, texto: null };
 }
 
@@ -1779,7 +1830,7 @@ async function executarDeleteClient(phone) {
 function cobrarCliente(phone, name, debt) {
     const texto = msgCobranca.replace('{nome}', name).replace('{valor}', debt.toFixed(2).replace('.', ','));
     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-    window.open(`https://api.whatsapp.com/send?phone=55${phone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+    abrirWpp(phone, _cabecalhoWpp + texto);
 }
 
 // PEDIDOS
@@ -3153,7 +3204,7 @@ async function carregarPedidosCliente(phone) {
                     const itensTexto = (p.items || '').trim();
                     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
                     const texto = `*histórico*\n${dataStr} / ${horaStr}\nCliente: ${clienteNome.toUpperCase()}\n\n${itensTexto}\n\nTotal: R$ ${Number(p.total||0).toFixed(2).replace('.',',')}`;
-                    window.open(`https://api.whatsapp.com/send?phone=55${list._clientePhone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+                    abrirWpp(list._clientePhone, _cabecalhoWpp + texto);
                 }
             });
 
@@ -3179,7 +3230,7 @@ async function carregarPedidosCliente(phone) {
         const totalGeral = [...list._selecionados].reduce((acc, i) => acc + Number(data[i].total || 0), 0);
         const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
         const texto = `🧾 *Histórico geral*\n\n👤 Cliente: ${clienteNome}\n──────────────────\n${itens.join('\n──────────────────\n')}\n──────────────────\n\n🛍️ *Totais em pedidos* 🛍️\n*R$ ${totalGeral.toFixed(2).replace('.', ',')}*`;
-        window.open(`https://api.whatsapp.com/send?phone=55${list._clientePhone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+        abrirWpp(list._clientePhone, _cabecalhoWpp + texto);
         window.cancelarSelecaoPedidos();
     };
 
@@ -3352,7 +3403,7 @@ async function carregarPagamentosCliente(c) {
                     const mioloLimpo = miolo.replace(/^──────────────────\n/, '').replace(/\n──────────────────$/, '');
                     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
                     const texto = `${cabecalho}──────────────────\n${mioloLimpo}\n──────────────────\n${rodape}`;
-                    window.open(`https://api.whatsapp.com/send?phone=55${list._clientePhone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+                    abrirWpp(list._clientePhone, _cabecalhoWpp + texto);
                 }
             });
 
@@ -3396,7 +3447,7 @@ async function carregarPagamentosCliente(c) {
         const totalPago = [...list._selecionados].reduce((acc, i) => acc + Number(pagamentos[i].valor || 0), 0);
         const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
         const texto = `🧾 *Comprovante geral*\n\n👤 Cliente: ${c.name}\n──────────────────\n${itens.join('\n──────────────────\n')}\n──────────────────\n\n💹 *Totais pagos* 💹\n*R$ ${totalPago.toFixed(2).replace('.', ',')}*`;
-        window.open(`https://api.whatsapp.com/send?phone=55${list._clientePhone}&text=${encodeURIComponent(_cabecalhoWpp + texto)}`, '_blank');
+        abrirWpp(list._clientePhone, _cabecalhoWpp + texto);
         window.cancelarSelecaoPagamentos();
     };
 
@@ -3612,8 +3663,7 @@ async function enviarComprovanteDia() {
 
     const phone = c.phone.replace(/\D/g,'');
     const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-    const url = `https://wa.me/55${phone}?text=${encodeURIComponent(_cabecalhoWpp + textoComprovante)}`;
-    window.open(url, '_blank');
+    abrirWpp(phone, _cabecalhoWpp + textoComprovante);
 }
 
 
@@ -5037,7 +5087,7 @@ async function executarCompra(total, pedidoTexto) {
     compraClienteAtual = null;
     setTimeout(() => {
         const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-        window.open(`https://api.whatsapp.com/send?phone=55${_phoneWpp}&text=${encodeURIComponent(_cabecalhoWpp + msgWpp)}`, '_blank');
+        abrirWpp(_phoneWpp, _cabecalhoWpp + msgWpp);
     }, 500);
     document.getElementById('compraEtapa1').style.display = 'block';
     document.getElementById('compraEtapa2').style.display = 'none';
@@ -5760,7 +5810,25 @@ function fecharModalOrdemRota() {
 }
 
 
+
+// Hook openSection para manter header visível em desktop
+const _origOpenSection = openSection;
+openSection = function(section) {
+    _origOpenSection(section);
+    if (window.innerWidth >= 900) {
+        document.getElementById('mainHeader').style.display = 'flex';
+    }
+};
+
+// Hook goHome para manter header visível em desktop
+const _origGoHome = goHome;
+goHome = function(fromPopstate) {
+    _origGoHome(fromPopstate);
+};
+
 </script>
+
+
 
 
 
@@ -5942,7 +6010,10 @@ function fecharModalOrdemRota() {
     </div>
 </div>
 
+    </div><!-- /notebookContent -->
+    </div><!-- /notebookMain -->
 </div><!-- /adminApp -->
 
-<script src="https://replit-cdn.com/replit-pill/replit-pill.global.js" data-repl-id="1bee6c32-6ee0-41b2-bd74-089a68e8f07c"></script></body>
+
+</body>
 </html>
