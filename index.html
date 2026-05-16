@@ -862,8 +862,8 @@ function wppUrl(phone, text) {
         return `whatsapp://send?phone=55${phone}&text=${encoded}`;
     }
     if (/Android/i.test(ua)) {
-        // Android: intent força abrir direto no app sem seletor
-        return `intent://send?phone=55${phone}&text=${encoded}#Intent;scheme=whatsapp;package=com.whatsapp;end`;
+        // Android: intent força abrir direto no WhatsApp Business
+        return `intent://send?phone=55${phone}&text=${encoded}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end`;
     }
     // Desktop: WhatsApp Web
     return `https://web.whatsapp.com/send?phone=55${phone}&text=${encoded}`;
