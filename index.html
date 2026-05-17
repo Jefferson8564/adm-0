@@ -2362,6 +2362,7 @@ async function ocultarPedido(orderId) {
     });
     _pedidosOcultos.add(orderId);
     delete ordersMap[orderId];
+    loadOrderSummary(Object.values(ordersMap));
     // Atualiza status para Aguardando Entregador
     sb.from('pedidos').update({ status: 'Aguardando Entregador' }).eq('id', orderId).then(({ error }) => {
         if (error) console.warn('[OK] Erro ao atualizar status do pedido:', error);
@@ -2395,6 +2396,7 @@ async function executarCancelamentoPedido(orderId) {
         .eq("id", orderId).maybeSingle();
     if (!o) {
         delete ordersMap[orderId];
+        loadOrderSummary(Object.values(ordersMap));
         document.querySelectorAll("[id='wrap_" + orderId + "']").forEach(w => w.remove());
         showToast({ type: 'success', title: '✅ Cancelado!', body: 'Pedido removido.', duration: 3000 });
         return;
@@ -2435,6 +2437,7 @@ async function executarCancelamentoPedido(orderId) {
     // Deleta o pedido do banco
     await sb.from("pedidos").delete().eq("id", orderId);
     delete ordersMap[orderId];
+    loadOrderSummary(Object.values(ordersMap));
 
     // Remove o card visualmente
     document.querySelectorAll("[id='wrap_" + orderId + "']").forEach(wrap => {
