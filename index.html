@@ -78,7 +78,7 @@
         .home-store-btn { margin-top: 20px; display: block; text-align: center; text-decoration: none; background: linear-gradient(135deg, #1a1a2e, #c75b24); color: white; padding: 14px; border-radius: 18px; font-weight: 700; font-size: 15px; }
 
         
-        #innerApp { display: none; padding-top: 0; }
+        #innerApp { display: none; padding-top: 0; overflow-y: auto; }
         .section { display: none; padding: 15px; max-width: 600px; margin: 0 auto; }
         .section.active { display: block; }
         .back-area { display: flex; align-items: center; gap: 10px; padding: 12px 15px; background: #1a0f2e; border-bottom: 1px solid #2e1f4a; }
@@ -212,7 +212,7 @@
             #notebookContent { flex: 1; overflow-y: auto; overflow-x: hidden; }
             #homeScreen { padding-top: 24px !important; max-width: none !important; padding-left: 28px !important; padding-right: 28px !important; }
             .home-grid-2col { grid-template-columns: repeat(3, 1fr) !important; }
-            #innerApp { height: 100%; }
+            #innerApp { box-sizing: border-box; overflow-y: visible; }
             .back-area { padding: 14px 24px; background: #130b22; border-bottom: 1px solid #2e1f4a; }
             .section { padding: 20px 28px; max-width: none !important; }
             .card-box { max-width: 640px; }
@@ -222,6 +222,11 @@
             #tab-compra { width: 100% !important; box-sizing: border-box; overflow-y: auto; max-height: calc(100vh - 120px); }
             #compraEtapa1 { width: 100% !important; }
             #headerSalgados { padding: 12px 28px !important; }
+            #tab-refazer { max-width: none !important; }
+            #refazerLayout { flex-direction: row !important; align-items: flex-start; gap: 20px; }
+            .refazer-col-hoje { flex: 1; max-width: none !important; position: sticky; top: 0; }
+            .refazer-col-todos { flex: 2; max-width: none !important; overflow-y: auto; max-height: calc(100vh - 130px); }
+            #refazerHojeGrid { grid-template-columns: repeat(4, 1fr) !important; }
         }
 
 
@@ -370,10 +375,10 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
         </div>
 
 
-    </div></div>
+    </div>
 
     <!-- SEÇÕES INTERNAS -->
-    <div id="innerApp" style="overflow-x:hidden;overflow-y:auto;">
+    <div id="innerApp" style="overflow-x:hidden;">
         <div class="back-area" style="justify-content:space-between;">
             <div style="display:flex; align-items:center; gap:10px;">
                 <button class="back-btn" onclick="goHome()">← Voltar</button>
@@ -595,12 +600,13 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
 
                 <!-- ABA REFAZER PEDIDOS -->
         <div id="tab-refazer" class="section">
+            <div id="refazerLayout" style="display:flex;flex-direction:column;gap:14px;">
 
             <!-- CARD HOJE -->
-            <div class="card-box" style="border-top:4px solid #8e44ad;margin-bottom:14px;">
+            <div class="card-box refazer-col-hoje" style="border-top:4px solid #8e44ad;margin-bottom:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <h4 style="margin:0;color:#8e44ad;font-size:15px;">📅 Hoje</h4>
-                    <button onclick="carregarClientesRefazer()" style="padding:6px 14px;background:linear-gradient(135deg,#8e44ad,#6c2fa8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">🔄</button>
+                    <h4 style="margin:0;color:#8e44ad;font-size:15px;">&#x1F4C5; Hoje</h4>
+                    <button onclick="carregarClientesRefazer()" style="padding:6px 14px;background:linear-gradient(135deg,#8e44ad,#6c2fa8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">&#x1F504;</button>
                 </div>
                 <!-- Dia + horário agendado -->
                 <div id="refazerHojeBanner" style="background:#1a0f2e;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#b388ff;font-weight:700;"></div>
@@ -608,20 +614,21 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
                 <div id="refazerExecStatus" style="display:none;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;font-weight:700;"></div>
                 <!-- Grade de clientes de hoje -->
                 <div id="refazerHojeGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-                    <div style="grid-column:1/-1;text-align:center;padding:18px;color:#9080b8;font-size:13px;">⏳ Carregando...</div>
+                    <div style="grid-column:1/-1;text-align:center;padding:18px;color:#9080b8;font-size:13px;">&#x23F3; Carregando...</div>
                 </div>
             </div>
 
             <!-- CARD TODOS OS CLIENTES -->
-            <div class="card-box" style="border-top:4px solid #4a2d7a;">
+            <div class="card-box refazer-col-todos" style="border-top:4px solid #4a2d7a;margin-bottom:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <h4 style="margin:0;color:#9080b8;font-size:14px;">👥 Todos os clientes</h4>
+                    <h4 style="margin:0;color:#9080b8;font-size:14px;">&#x1F465; Todos os clientes</h4>
                     <span id="refazerTotalBadge" style="background:#2d1b4e;color:#b388ff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;"></span>
                 </div>
-                <input type="text" id="searchClienteRefazer" class="input-text" placeholder="🔍 Buscar cliente..." onkeyup="filtrarClientesRefazer()" style="margin-bottom:10px;">
+                <input type="text" id="searchClienteRefazer" class="input-text" placeholder="&#x1F50D; Buscar cliente..." onkeyup="filtrarClientesRefazer()" style="margin-bottom:10px;">
                 <div id="listaClientesRefazer" style="display:flex;flex-direction:column;gap:8px;"></div>
             </div>
 
+            </div><!-- /refazerLayout -->
         </div>
         <!-- ABA HISTÓRICO DE PRÊMIOS -->
 
@@ -845,7 +852,18 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
             </div>
         </div>
 
+
+        <!-- ═══════════════════════════════ SEÇÃO ROTAS ═══════════════════════════════ -->
+        <div id="tab-rotas" class="section">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div style="font-size:11px;font-weight:700;color:#9080b8;text-transform:uppercase;letter-spacing:1px;">Rotas cadastradas</div>
+                <button onclick="abrirModalNovaRota()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;border-radius:12px;padding:8px 16px;color:white;font-weight:800;font-size:13px;cursor:pointer;">+ Nova Rota</button>
+            </div>
+            <div id="rotasLista"></div>
+        </div>
+
     </div><!-- /innerApp -->
+    </div><!-- /notebookContent -->
 
 <script>
 const SUPABASE_URL = "https://vpeyqgijajywgswmezlh.supabase.co";
@@ -1086,11 +1104,6 @@ function openSection(section) {
     const s = map[section];
     document.getElementById(s.id).classList.add('active');
     document.getElementById('sectionTitle').textContent = s.title;
-    // Restaura scroll do innerApp ao sair da aba compra
-    if (window.innerWidth >= 900 && section !== 'compra') {
-        const ia = document.getElementById('innerApp');
-        if (ia) { ia.style.overflowY = 'auto'; ia.style.height = '100%'; }
-    }
     // Mostra botão de inativos apenas na aba clientes
 
     s.fn();
@@ -1472,7 +1485,8 @@ const _diasSemanaAdmin = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sá
 
 function abrirRefazerAdmin(phone) {
     const c = (_clientesAdminCache.find(x => x.phone === phone))
-           || (typeof todosClientesCompra !== 'undefined' && todosClientesCompra.find(x => x.phone === phone));
+           || (typeof todosClientesCompra !== 'undefined' && todosClientesCompra.find(x => x.phone === phone))
+           || (typeof clientesRefazerCache !== 'undefined' && clientesRefazerCache.find(x => x.phone === phone));
     if (!c) return;
     _refazerAdminPhone = phone;
     _refazerAdminDias = new Set(c.dias_refazer && c.dias_refazer.length > 0 ? c.dias_refazer : [0,1,2,3,4,5]);
@@ -1526,6 +1540,10 @@ async function salvarDiasRefazerAdmin() {
             const cc = todosClientesCompra.find(x => x.phone === _refazerAdminPhone);
             if (cc) cc.dias_refazer = diasArray;
         }
+        if (typeof clientesRefazerCache !== 'undefined') {
+            const cr = clientesRefazerCache.find(x => x.phone === _refazerAdminPhone);
+            if (cr) { cr.dias_refazer = diasArray; _renderTodosRefazer(clientesRefazerCache); }
+        }
         const iconElS = document.getElementById('compraHeaderRefazer');
         if (iconElS) iconElS.style.filter = 'none';
         fecharRefazerAdmin();
@@ -1547,6 +1565,10 @@ async function desativarRefazerAdmin() {
         if (typeof todosClientesCompra !== 'undefined') {
             const cc = todosClientesCompra.find(x => x.phone === _refazerAdminPhone);
             if (cc) cc.dias_refazer = null;
+        }
+        if (typeof clientesRefazerCache !== 'undefined') {
+            const cr = clientesRefazerCache.find(x => x.phone === _refazerAdminPhone);
+            if (cr) { cr.dias_refazer = null; _renderTodosRefazer(clientesRefazerCache); }
         }
         const iconElD = document.getElementById('compraHeaderRefazer');
         if (iconElD) iconElD.style.filter = 'grayscale(1) opacity(0.45)';
@@ -1646,7 +1668,7 @@ async function adminAddClient() {
     if (!name) { showToast({ type:'confirm', title:'⚠️ Atenção', body:'Preencha o nome do cliente.' }); return; }
     if (partial.length < 8) { showToast({ type:'confirm', title:'⚠️ Atenção', body:'Número inválido. Cole o número completo do WhatsApp.' }); return; }
     const phone = "819" + partial;
-    await sb.from("clientes").upsert({ name, phone, fiado: true, debt: 0 });
+    await sb.from("clientes").upsert({ name, phone, fiado: true, debt: 0, dias_refazer: ['0','1','2','3','4'] });
     document.getElementById('newCName').value = '';
     document.getElementById('newCPhone').value = '';
     loadAdminClients();
@@ -4534,41 +4556,51 @@ function _renderTodosRefazer(clientes) {
     const badge     = document.getElementById('refazerTotalBadge');
     if (!container) return;
 
-    const adminIdx = _adminIdxDeHoje();
+    const adminIdx   = _adminIdxDeHoje();
     const comRefazer = clientes.filter(c => c.dias_refazer && c.dias_refazer.length > 0);
+    const semRefazer = clientes.filter(c => !c.dias_refazer || c.dias_refazer.length === 0);
 
     if (badge) badge.textContent = comRefazer.length > 0 ? `${comRefazer.length} ativos` : 'nenhum';
 
-    if (comRefazer.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:20px;color:#9080b8;">Nenhum cliente com refazer ativo</div>';
-        return;
-    }
-
-    container.innerHTML = comRefazer.map(c => {
-        const isHoje = c.dias_refazer.includes(adminIdx) && adminIdx !== 6;
+    const renderCard = (c, ativo) => {
+        const isHoje   = ativo && c.dias_refazer.includes(adminIdx) && adminIdx !== 6;
         const temPedido = c.saved_order && c.saved_order.trim();
-        const corBorda  = isHoje ? '#22c55e' : '#2e1f4a';
+        const corBorda  = isHoje ? '#22c55e' : ativo ? '#2e1f4a' : '#1e1430';
         const corBg     = isHoje ? 'linear-gradient(135deg,#0f2a0f,#0d2210)' : '#150b25';
+        const diasHTML = ativo
+            ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' +
+              c.dias_refazer.map(d => {
+                  const eh = d === adminIdx && adminIdx !== 6;
+                  return '<span style="padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;' +
+                      'background:' + (eh ? 'rgba(34,197,94,0.25)' : 'rgba(142,68,173,0.2)') + ';' +
+                      'color:' + (eh ? '#4ade80' : '#b388ff') + ';">' + diasNomes[d] + '</span>';
+              }).join('') + '</div>'
+            : '<div style="font-size:10px;color:#6b5a8a;margin-top:3px;">sem dias configurados</div>';
         return `<div style="background:${corBg};border:1.5px solid ${corBorda};border-radius:14px;padding:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                        <div style="font-weight:700;color:#e8d8f8;font-size:13px;">${c.name}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                        <div style="font-weight:700;color:${ativo ? '#e8d8f8' : '#7a6a9a'};font-size:13px;">${c.name}</div>
                         ${isHoje ? '<span style="font-size:10px;background:#22c55e;color:#fff;font-weight:800;padding:1px 7px;border-radius:10px;">HOJE</span>' : ''}
-                        ${!temPedido ? '<span style="font-size:10px;background:#4a1a1a;color:#e74c3c;font-weight:800;padding:1px 7px;border-radius:10px;">sem pedido salvo</span>' : ''}
+                        ${ativo && !temPedido ? '<span style="font-size:10px;background:#4a1a1a;color:#e74c3c;font-weight:800;padding:1px 7px;border-radius:10px;">sem pedido salvo</span>' : ''}
                     </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                        ${c.dias_refazer.map(d => {
-                            const ativo = d === adminIdx && adminIdx !== 6;
-                            return `<span style="padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;
-                                background:${ativo ? 'rgba(34,197,94,0.25)' : 'rgba(142,68,173,0.2)'};
-                                color:${ativo ? '#4ade80' : '#b388ff'};">${diasNomes[d]}</span>`;
-                        }).join('')}
-                    </div>
+                    ${diasHTML}
                 </div>
+                <button onclick="abrirRefazerAdmin('${c.phone}')" title="Configurar dias"
+                    style="flex-shrink:0;background:rgba(142,68,173,0.2);border:1.5px solid rgba(142,68,173,0.4);border-radius:10px;padding:7px 10px;color:#b388ff;font-size:15px;cursor:pointer;line-height:1;">⚙️</button>
             </div>
         </div>`;
-    }).join('');
+    };
+
+    const ativosHTML  = comRefazer.length > 0
+        ? comRefazer.map(c => renderCard(c, true)).join('')
+        : '<div style="text-align:center;padding:16px;color:#9080b8;font-size:12px;">Nenhum ativo ainda</div>';
+
+    container.innerHTML =
+        `<div style="font-size:10px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✅ Ativos (${comRefazer.length})</div>`
+        + ativosHTML
+        + `<div style="font-size:10px;font-weight:700;color:#6b5a8a;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">⚪ Sem refazer (${semRefazer.length})</div>`
+        + semRefazer.map(c => renderCard(c, false)).join('');
 }
 
 function filtrarClientesRefazer() {
@@ -4766,13 +4798,6 @@ let todosClientesCompra = [];
 let clientesOcultosCompra = [];
 
 async function loadCompraTab() {
-    // Desktop: scroll no notebookContent, não no innerApp
-    if (window.innerWidth >= 900) {
-        const nc = document.getElementById('notebookContent');
-        const ia = document.getElementById('innerApp');
-        if (nc) { nc.style.overflowY = 'auto'; }
-        if (ia) { ia.style.overflowY = 'visible'; ia.style.height = 'auto'; }
-    }
     compraCart = {};
     compraPagamento = 'PAGA NA ENTREGA';
     compraClienteAtual = null;
@@ -5978,16 +6003,6 @@ goHome = function(fromPopstate) {
     </div>
 </div>
 
-
-<!-- ═══════════════════════════════ SEÇÃO ROTAS ═══════════════════════════════ -->
-<div id="tab-rotas" class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div style="font-size:11px;font-weight:700;color:#9080b8;text-transform:uppercase;letter-spacing:1px;">Rotas cadastradas</div>
-        <button onclick="abrirModalNovaRota()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;border-radius:12px;padding:8px 16px;color:white;font-weight:800;font-size:13px;cursor:pointer;">+ Nova Rota</button>
-    </div>
-    <div id="rotasLista"></div>
-</div>
-
 <!-- Modal Criar/Editar Rota -->
 <div id="modalRota" class="u-modal-overlay" style="display:none;" onclick="if(event.target===this)fecharModalRota()">
     <div class="u-modal-panel" style="max-width:440px;">
@@ -6061,7 +6076,6 @@ goHome = function(fromPopstate) {
     </div>
 </div>
 
-    </div><!-- /notebookContent -->
     </div><!-- /notebookMain -->
 </div><!-- /adminApp -->
 
