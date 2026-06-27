@@ -1668,9 +1668,15 @@ async function adminAddClient() {
     if (!name) { showToast({ type:'confirm', title:'⚠️ Atenção', body:'Preencha o nome do cliente.' }); return; }
     if (partial.length < 8) { showToast({ type:'confirm', title:'⚠️ Atenção', body:'Número inválido. Cole o número completo do WhatsApp.' }); return; }
     const phone = "819" + partial;
-    await sb.from("clientes").upsert({ name, phone, fiado: true, debt: 0, dias_refazer: ['0','1','2','3','4'] });
+    const { error } = await sb.from("clientes").upsert({ name, phone, debt: 0 });
+    if (error) {
+        console.error('Erro ao cadastrar cliente:', error);
+        showToast({ type: 'confirm', title: '❌ Erro ao cadastrar', body: error.message || 'Não foi possível salvar o cliente.' });
+        return;
+    }
     document.getElementById('newCName').value = '';
     document.getElementById('newCPhone').value = '';
+    showToast({ type: 'success', title: '✅ Cliente cadastrado', body: name });
     loadAdminClients();
 }
 
