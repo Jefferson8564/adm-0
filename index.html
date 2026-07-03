@@ -197,8 +197,8 @@
         .rota-modal-dia.ativo { border-color:#8b5cf6;background:rgba(139,92,246,0.2);color:#c084fc; }
 
         /* ── ORDEM DE ENTREGA ── */
-        .ordem-item { display:flex;align-items:center;gap:10px;padding:12px 14px;background:#1a0f2e;border-radius:14px;margin-bottom:8px;border:1px solid #2e1f4a;touch-action:none;user-select:none;-webkit-user-select:none; }
-        .ordem-handle { font-size:20px;color:#4a3a6a;cursor:grab;padding:4px 6px;flex-shrink:0;line-height:1; }
+        .ordem-item { display:flex;align-items:center;gap:10px;padding:12px 14px;background:#1a0f2e;border-radius:14px;margin-bottom:8px;border:1px solid #2e1f4a;user-select:none;-webkit-user-select:none; }
+        .ordem-handle { font-size:20px;color:#4a3a6a;cursor:grab;padding:4px 6px;flex-shrink:0;line-height:1;touch-action:none; }
         .ordem-handle:active { cursor:grabbing;color:#8b5cf6; }
         .ordem-num { font-size:12px;font-weight:800;color:#6b5c8a;min-width:24px;text-align:right;flex-shrink:0; }
 
@@ -367,7 +367,7 @@ window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
                 <div class="home-card-label">Tickets & Diamantes</div>
                 <div class="home-card-sub">Valor por compra</div>
             </button>
-            <button class="home-card" style="border-top:4px solid #a855f7;" onclick="openSection('rotas')">
+            <button class="home-card" style="border-top:4px solid #a855f7;" onclick="abrirModalOrdemRota()">
                 <span class="home-card-icon">🗺️</span>
                 <div class="home-card-label">Rotas</div>
                 <div class="home-card-sub">Grupos de entrega</div>
@@ -2344,8 +2344,8 @@ function buildOrderCard(o) {
             <div class="order-card-items">${itemsHTML}</div>
             <div class="order-card-footer">
                 <span class="order-card-valor" style="color:${valorColor};">R$ ${Number(o.total).toFixed(2).replace('.', ',')}</span>
-                <button onclick="ocultarPedido('${o.id}')" title="Marcar como visto"
-                    style="padding:4px 12px;border-radius:20px;border:1.5px solid #27ae60;background:#f0fff4;color:#27ae60;font-size:12px;font-weight:800;cursor:pointer;">✓ OK</button>
+                <button onclick="abrirConfirmarPedido('${o.id}')" title="Confirmar pedido"
+                    style="padding:4px 12px;border-radius:20px;border:1.5px solid #27ae60;background:#f0fff4;color:#27ae60;font-size:12px;font-weight:800;cursor:pointer;">✓ Confirmar</button>
             </div>
             ${cancelBtn}
         </div>
@@ -2355,8 +2355,30 @@ function buildOrderCard(o) {
 // APAGAR PEDIDO DIRETO DO SUPABASE
 const _pedidosOcultos = new Set();
 
-async function ocultarPedido(orderId) {
-    // Some visualmente imediatamente (igual ao original)
+// Abre o card de confirmação: confirma o pedido (Em produção -> Em espera).
+async function abrirConfirmarPedido(orderId) {
+    const o = ordersMap[orderId];
+    if (!o) return;
+
+    showToast({
+        type: 'confirm',
+        title: `✓ Confirmar pedido de ${o.customer_name}?`,
+        body: `Valor: R$ ${Number(o.total).toFixed(2).replace('.', ',')}`,
+        actions: [
+            { label: 'Voltar', bg: '#f0f0f0', color: '#555', fn: 'closeToast()' },
+            { label: '✓ Confirmar', bg: '#27ae60', color: 'white', fn: `executarConfirmarPedido('${orderId}')` }
+        ],
+        duration: 8000
+    });
+}
+
+async function executarConfirmarPedido(orderId) {
+    const o = ordersMap[orderId];
+    if (!o) return;
+
+    closeToast();
+
+    // Some visualmente imediatamente
     const wraps = document.querySelectorAll("[id='wrap_" + orderId + "']");
     wraps.forEach(wrap => {
         wrap.style.transition = "opacity 0.25s, max-height 0.3s, margin 0.3s";
@@ -2369,11 +2391,12 @@ async function ocultarPedido(orderId) {
     _pedidosOcultos.add(orderId);
     delete ordersMap[orderId];
     loadOrderSummary(Object.values(ordersMap));
-    // Atualiza status para Aguardando Entregador
-    sb.from('pedidos').update({ status: 'Aguardando Entregador' }).eq('id', orderId).then(({ error }) => {
-        if (error) console.warn('[OK] Erro ao atualizar status do pedido:', error);
-    });
-    showToast({ type: 'success', title: 'Aguardando Entregador 📦', duration: 3000 });
+
+    // Confirma o pedido: entra na fila do entregador (mesmo status que o app do entregador espera)
+    const { error: errPedido } = await sb.from('pedidos').update({ status: 'Em espera' }).eq('id', orderId);
+    if (errPedido) console.warn('[OK] Erro ao atualizar status do pedido:', errPedido);
+
+    showToast({ type: 'success', title: 'Pedido confirmado ✓', body: 'Aguardando entregador 📦', duration: 3000 });
 }
 
 function confirmarCancelamentoPedido(orderId) {
@@ -5756,29 +5779,26 @@ let _ordemRotaNome = '';
 let _ordemCor      = '#8b5cf6';
 let _dragEl = null, _dragClone = null, _dragOffY = 0, _dragList = null;
 
-async function abrirModalOrdemRota(rotaId, rotaNome, cor) {
-    _ordemRotaId   = rotaId;
-    _ordemRotaNome = rotaNome;
-    _ordemCor      = cor;
-
-    const _codigoOrdem = rotaId.substring(0, 4).toLowerCase();
+// Card de configuração: define a ordem de entrega (posição na rota) de todos os clientes.
+// Trabalha direto na coluna clientes.posição_rota — não depende mais da tabela "rotas".
+async function abrirModalOrdemRota() {
     document.getElementById('ordemRotaTitulo').innerHTML =
-        `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:${cor};font-weight:900;font-size:14px;color:white;margin-right:8px;">${rotaNome.charAt(0).toUpperCase()}</span>Ordem · Rota ${rotaNome} <span style="font-size:11px;font-family:monospace;background:rgba(139,92,246,0.2);color:#c084fc;border-radius:5px;padding:2px 6px;margin-left:4px;">${_codigoOrdem}</span>`;
+        `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#8b5cf6;font-weight:900;font-size:14px;color:white;margin-right:8px;">🗺️</span>Ordem de Entrega`;
 
     document.getElementById('ordemClientesList').innerHTML =
         '<div style="text-align:center;padding:30px;color:#9080b8;font-size:13px;">Carregando...</div>';
 
     document.getElementById('modalOrdemRota').style.display = 'flex';
-    history.pushState({ page: 'section', section: 'rotas' }, '');
+    history.pushState({ page: 'section', section: 'ordemRota' }, '');
 
-    const { data: todosClientes } = await sb.from('clientes').select('phone,name,rota').order('name');
+    const { data: todosClientes } = await sb.from('clientes').select('phone,name,"posição_rota"').order('name');
 
-    // Filtra e ordena pela posição salva no campo rota (formato "xxxx-pos")
+    // Ordena pela posição já salva; quem não tem posição vai pro final, por ordem alfabética
     const lista = (todosClientes || [])
-        .filter(c => _clienteTemRota(c.rota, rotaId))
+        .filter(c => c.phone && c.name)
         .sort((a, b) => {
-            const pa = _posNaRota(a.rota, rotaId) ?? 9999;
-            const pb = _posNaRota(b.rota, rotaId) ?? 9999;
+            const pa = (a['posição_rota'] != null && a['posição_rota'] !== '') ? Number(a['posição_rota']) : 9999;
+            const pb = (b['posição_rota'] != null && b['posição_rota'] !== '') ? Number(b['posição_rota']) : 9999;
             if (pa !== pb) return pa - pb;
             return a.name.localeCompare(b.name);
         });
@@ -5789,7 +5809,7 @@ async function abrirModalOrdemRota(rotaId, rotaNome, cor) {
 function _renderOrdemLista(lista) {
     const list = document.getElementById('ordemClientesList');
     if (!lista.length) {
-        list.innerHTML = '<div style="text-align:center;padding:30px;color:#9080b8;font-size:13px;">Nenhum cliente nesta rota</div>';
+        list.innerHTML = '<div style="text-align:center;padding:30px;color:#9080b8;font-size:13px;">Nenhum cliente cadastrado</div>';
         return;
     }
     list.innerHTML = lista.map((c, i) => {
@@ -5798,7 +5818,7 @@ function _renderOrdemLista(lista) {
         return `<div class="ordem-item" data-phone="${c.phone}" data-name="${c.name.replace(/"/g,'&quot;')}">
             <div class="ordem-handle">☰</div>
             <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
-                <div style="width:36px;height:36px;border-radius:50%;background:#2e1f4a;border:2px solid ${_ordemCor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${_ordemCor};flex-shrink:0;">${ini}</div>
+                <div style="width:36px;height:36px;border-radius:50%;background:#2e1f4a;border:2px solid #8b5cf6;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#8b5cf6;flex-shrink:0;">${ini}</div>
                 <div style="font-size:14px;font-weight:700;color:#e8d8f8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.name}</div>
             </div>
             <div class="ordem-num">${i+1}º</div>
@@ -5870,15 +5890,11 @@ async function salvarOrdemRota() {
     const items = document.querySelectorAll('#ordemClientesList .ordem-item');
     const ordem = [...items].map(el => el.dataset.phone);
     try {
-        // Salva posição no campo rota de cada cliente: "barra-1,candeias-3" etc.
-        const { data: cliAll } = await sb.from('clientes').select('phone,rota').in('phone', ordem);
         const BATCH = 10;
         for (let i = 0; i < ordem.length; i += BATCH) {
             await Promise.all(ordem.slice(i, i+BATCH).map((phone, idx) => {
                 const pos = i + idx + 1;
-                const c = (cliAll || []).find(x => x.phone === phone);
-                const novaRota = _adicionarRota(c?.rota || null, _ordemRotaId, pos);
-                return sb.from('clientes').update({ rota: novaRota }).eq('phone', phone);
+                return sb.from('clientes').update({ 'posição_rota': pos }).eq('phone', phone);
             }));
         }
         fecharModalOrdemRota();
