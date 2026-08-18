@@ -2706,7 +2706,7 @@ async function executarAutoRefazer() {
     const _adminIdx = _getd === 0 ? 6 : _getd - 1;  // dias_refazer: 0=Seg..6=Dom
 
     const { data: todosClientes } = await sb.from('clientes')
-        .select('phone, name, debt, saved_order, saved_order_total, dias_refazer, show_name')
+        .select('phone, name, debt, saved_order, saved_order_total, dias_refazer')
         .order('name');
 
     // Filtra igual ao grid: tem o dia de hoje em dias_refazer E tem pedido salvo
@@ -2841,16 +2841,10 @@ async function loadRefazerPedidos() {
         return { client: c, lastOrder };
     });
 
-    // Mostra TODOS os clientes, incluindo anônimos (show_name === false)
+    // Mostra TODOS os clientes. Ninguém vem pré-selecionado — a seleção é 100% manual
+    // (feita localmente pelo admin, guardada em refazerSelecionados/localStorage).
     const cardsFiltrados = cards;
 
-    // Pré-seleciona automaticamente clientes visíveis que nunca foram explicitamente desmarcados
-    cardsFiltrados.forEach(({ client: c, lastOrder: o }) => {
-        if (o && c.show_name === true && !refazerSelecionados[c.phone] && !refazerDesmarcados.includes(c.phone)) {
-            refazerSelecionados[c.phone] = { phone: c.phone, name: c.name, total: o.total, items: o.items, show_name: true };
-        }
-    });
-    salvarSelecoes();
     atualizarResumoRefazer();
 
     if (cardsFiltrados.length === 0) {
@@ -2876,7 +2870,7 @@ async function loadRefazerPedidos() {
         const safeItems = o ? o.items.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n') : '';
         const safeTotal = o ? o.total : 0;
         return `<div id="card_refazer_${c.phone}"
-            onclick="${semPedido ? '' : `toggleRefazer('${c.phone}','${c.name.replace(/'/g,"\\'")}',${safeTotal},'${safeItems}',${c.show_name === true})`}"
+            onclick="${semPedido ? '' : `toggleRefazer('${c.phone}','${c.name.replace(/'/g,"\\'")}',${safeTotal},'${safeItems}')`}"
             style="position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;
             padding:14px 6px 10px;border-radius:18px;cursor:${semPedido ? 'default' : 'pointer'};
             background:${bgCard};border:2px solid ${borderCard};
@@ -2991,7 +2985,7 @@ async function executarCancelamentoAutoRefazer(execIndex, orderId, phone, total,
     showToast({ type: 'success', title: '✅ Cancelado!', body: `R$ ${Number(total).toFixed(2).replace('.', ',')} estornado do pagar depois de ${name}.`, duration: 5000 });
 }
 
-function toggleRefazer(phone, name, total, items, showName = false) {
+function toggleRefazer(phone, name, total, items) {
     const card = document.getElementById('card_refazer_' + phone);
     if (refazerSelecionados[phone]) {
         // Desmarcar explicitamente
@@ -3001,7 +2995,7 @@ function toggleRefazer(phone, name, total, items, showName = false) {
     } else {
         // Selecionar e remover dos desmarcados
         refazerDesmarcados = refazerDesmarcados.filter(p => p !== phone);
-        refazerSelecionados[phone] = { phone, name, total, items, show_name: showName };
+        refazerSelecionados[phone] = { phone, name, total, items };
         if (card) { card.style.background = '#5b21b6'; card.style.borderColor = '#8b5cf6'; }
     }
     salvarSelecoes();
