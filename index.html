@@ -1387,12 +1387,20 @@ function abrirDetalheCliente(phone) {
             : `<div style="font-size:15px;color:#9080b8;">Saldo zerado ✅</div>`;
 
     document.getElementById('detalheClienteBody').innerHTML = `
-        <button onclick="fecharDetalheCliente();setTimeout(()=>abrirEditarNomeClienteById(this.dataset.phone),150)" data-phone="${c.phone}"
-            style="width:100%;padding:10px;margin-bottom:12px;background:linear-gradient(135deg,#e67e22,#c0392b);
-            border:none;border-radius:14px;font-size:14px;font-weight:800;color:white;cursor:pointer;
-            display:flex;align-items:center;justify-content:center;gap:8px;">
-            📎 Editar Nome
-        </button>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button onclick="fecharDetalheCliente();setTimeout(()=>abrirEditarNomeClienteById(this.dataset.phone),150)" data-phone="${c.phone}"
+                style="flex:1;padding:10px;background:linear-gradient(135deg,#e67e22,#c0392b);
+                border:none;border-radius:14px;font-size:13px;font-weight:800;color:white;cursor:pointer;
+                display:flex;align-items:center;justify-content:center;gap:6px;">
+                📎 Editar Nome
+            </button>
+            <button onclick="abrirUltimosPagamentos('${c.phone}')"
+                style="flex:1;padding:10px;background:linear-gradient(135deg,#16a085,#117864);
+                border:none;border-radius:14px;font-size:13px;font-weight:800;color:white;cursor:pointer;
+                display:flex;align-items:center;justify-content:center;gap:6px;">
+                🧾 Últimos 10
+            </button>
+        </div>
         <div style="background:#110820;border-radius:16px;padding:14px;margin-bottom:12px;text-align:center;">
             ${saldoHtml}
         </div>
@@ -1831,6 +1839,16 @@ async function executarPayDebt(phone, val) {
     const mioloHistorico = `──────────────────\n👤 Cliente: ${c.name}\n📅 Data/Hora: ${dataHora}\n💰 Valor pago: R$ ${val.toFixed(2).replace('.', ',')}\n${saldoTexto}\n──────────────────`;
     await inserirNotificacao(phone, 'pagamento', val, mioloHistorico);
 
+    // SALVA AUTOMATICAMENTE somente depois que o pagamento foi confirmado com sucesso.
+    // Cada cliente possui sua própria lista local e são mantidos somente os 10 últimos pagamentos.
+    const comprovanteLocal = `📅 Data/Hora: ${dataHora}\n💰 Valor pago: R$ ${val.toFixed(2).replace('.', ',')}\n${saldoTexto}`;
+    const chaveComprovantes = `comprovantes_pagamento_${phone}`;
+    let comprovantesLocais = [];
+    try { comprovantesLocais = JSON.parse(localStorage.getItem(chaveComprovantes) || '[]'); } catch(e) { comprovantesLocais = []; }
+    comprovantesLocais.unshift({ dataHora, valor: val, status: saldoTexto, texto: comprovanteLocal });
+    comprovantesLocais = comprovantesLocais.slice(0, 10);
+    localStorage.setItem(chaveComprovantes, JSON.stringify(comprovantesLocais));
+
     fecharDetalheCliente();
     loadAdminClients();
 
@@ -1839,13 +1857,48 @@ async function executarPayDebt(phone, val) {
     showToast({
         type: 'success',
         title: `💰 Pagamento de R$ ${val.toFixed(2).replace('.', ',')} registrado!`,
-        body: `Comprovante enviado para ${c.name} no WhatsApp!`,
+        body: `Comprovante salvo localmente para ${c.name}.`,
         duration: 4000
     });
+}
 
-    // Abre o WhatsApp direto com o comprovante
-    const _cabecalhoWpp = `👽 *𝕕𝕚𝕟𝕠 𝕚.𝕒* ᵃᵈᵐⁱⁿⁱˢᵗʳᵃᵈᵒʳ\n`;
-    abrirWpp(phone, _cabecalhoWpp + comprovante);
+function abrirUltimosPagamentos(phone) {
+    const chave = `comprovantes_pagamento_${phone}`;
+    let lista = [];
+    try { lista = JSON.parse(localStorage.getItem(chave) || '[]'); } catch(e) { lista = []; }
+
+    const cliente = _clientesAdminCache.find(x => x.phone === phone);
+    const nome = cliente ? cliente.name : 'Cliente';
+
+    const antigo = document.getElementById('modalUltimosPagamentosLocal');
+    if (antigo) antigo.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'modalUltimosPagamentosLocal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const itens = lista.slice(0,10).map((item, index) => `
+        <div style="background:#1a0f2e;border:1px solid rgba(139,92,246,.25);border-radius:14px;padding:13px;margin-bottom:9px;">
+            <div style="font-size:11px;font-weight:900;color:#9b8ab8;margin-bottom:7px;">PAGAMENTO ${index + 1}</div>
+            <div style="white-space:pre-line;font-size:13px;line-height:1.55;color:#f1eaff;">${String(item.texto || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+        </div>`).join('');
+
+    overlay.innerHTML = `
+        <div style="width:min(520px,100%);max-height:88vh;overflow:hidden;background:#10081d;border:1px solid rgba(139,92,246,.35);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.55);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(139,92,246,.2);">
+                <div>
+                    <div style="font-size:17px;font-weight:900;color:#f3eaff;">🧾 Últimos 10 pagamentos</div>
+                    <div style="font-size:12px;color:#9b8ab8;margin-top:3px;">${nome}</div>
+                </div>
+                <button onclick="document.getElementById('modalUltimosPagamentosLocal').remove()" style="background:#241434;border:0;color:#fff;border-radius:10px;padding:7px 11px;font-size:16px;cursor:pointer;">✕</button>
+            </div>
+            <div style="padding:14px;max-height:65vh;overflow:auto;">
+                ${itens || '<div style="text-align:center;color:#9b8ab8;padding:30px 10px;">Nenhum pagamento salvo localmente para este cliente.</div>'}
+            </div>
+        </div>`;
+
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
 }
 
 function enviarComprovanteWpp() {
@@ -1896,6 +1949,8 @@ function abreviarNome(nome) {
     if (n.includes('frango') || n.includes('frang')) return 'cox';
     if (n.includes('catupiry') || n.includes('catu')) return 'cat';
     if (n.includes('charque') || n.includes('charg')) return 'cha';
+    if (n.includes('cheddar') || n.includes('ched')) return 'ched';
+    if (n.includes('risole') || n.includes('risol')) return 'car';
     if (n.includes('enrolad') || n.includes('sal') || n.includes('sals')) return 'sal';
     if (n.includes('queijo') || n.includes('quei') || n.startsWith('r ') || n.startsWith('r.') || n.startsWith('p ') || n.startsWith('p.') || n.includes('pastel')) return 'que';
     if (n.includes('cox') || n.includes('coxinha')) return 'cox';
@@ -1969,8 +2024,8 @@ async function loadOrderSummary(pedidosExternos) {
 function renderSummaryGrid(contagem) {
     const grid = document.getElementById('orderSummaryGrid');
     if (!grid) return;
-    const tipos = ['cox', 'cat', 'cha', 'sal', 'que'];
-    const labels = { cox:'cox', cat:'cat', cha:'cha', sal:'sal', que:'que' };
+    const tipos = ['cox', 'cat', 'cha', 'ched', 'car', 'sal', 'que'];
+    const labels = { cox:'cox', cat:'cat', cha:'cha', ched:'ched', car:'car', sal:'sal', que:'que' };
 
     const rowFritos = tipos.map(tipo => {
         const qtd = contagem[tipo] || 0;
@@ -1993,7 +2048,7 @@ function renderSummaryGrid(contagem) {
 function abrirSummaryDetalhe(tipo) {
     const lista = _summaryDetalhes[tipo] || [];
     if (!lista.length) return;
-    const nomes = { cox:'Coxinha de Frango', cat:'Coxinha Catupiry', cha:'Coxinha Charque', sal:'Salsicha', que:'Queijo/Pastel' };
+    const nomes = { cox:'Coxinha de Frango', cat:'Coxinha Catupiry', cha:'Coxinha Charque', ched:'Coxinha de Cheddar', car:'Risole de Carne', sal:'Salsicha', que:'Queijo/Pastel' };
     const cor = '#c75b24';
     const nomeLabel = nomes[tipo] || tipo;
     const total = lista.reduce((s, c) => s + c.qtd, 0);
@@ -2142,8 +2197,8 @@ async function loadHomeSummary() {
 function renderHomeSummaryGrid(pedidos) {
     const grid = document.getElementById('homeSummaryGrid');
     if (!grid) return;
-    const tipos = ['cox', 'cat', 'cha', 'sal', 'que', 'cala'];
-    const labels = { cox:'COX', cat:'CAT', cha:'CHA', sal:'SAL', que:'QUE', cala:'CALA' };
+    const tipos = ['cox', 'cat', 'cha', 'ched', 'car', 'sal', 'que', 'cala'];
+    const labels = { cox:'COX', cat:'CAT', cha:'CHA', ched:'CHED', car:'CAR', sal:'SAL', que:'QUE', cala:'CALA' };
     const contagem = {};
     (pedidos).forEach(o => {
         if ((o.status || '').toLowerCase() === 'cancelado') return;
