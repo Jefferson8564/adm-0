@@ -1792,6 +1792,19 @@ async function executarPayDebt(phone, val) {
     // Monta o comprovante usando o template configurável
     const now = new Date();
     const dataHora = now.toLocaleString('pt-BR', { timeZone:'America/Sao_Paulo', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    // Texto específico da confirmação de pagamento:
+    // - dívida anterior > 0: mostra o valor que estava pendente
+    // - dívida anterior <= 0: considera a conta quitada
+    // - novo saldo > 0: ainda ficou dívida
+    // - novo saldo < 0: pagamento gerou crédito (dinheiro+ na conta)
+    const dividaAnteriorTexto = Number(c.debt) > 0
+        ? `R$ ${Number(c.debt).toFixed(2).replace('.', ',')}`
+        : 'quitado';
+    const statusPagamentoTexto = novoSaldo > 0
+        ? `⚠️ Status: a pagar R$ ${novoSaldo.toFixed(2).replace('.', ',')}`
+        : novoSaldo < 0
+            ? `✅ Status: crédito de R$ ${Math.abs(novoSaldo).toFixed(2).replace('.', ',')}`
+            : `✅ Status: Quitado`;
     const saldoTexto = novoSaldo > 0
         ? `Saldo devedor restante: R$ ${novoSaldo.toFixed(2).replace('.', ',')}`
         : novoSaldo < 0
@@ -1836,7 +1849,7 @@ async function executarPayDebt(phone, val) {
     if (input) input.value = '';
 
     // Registra notificação de pagamento
-    const mioloHistorico = `──────────────────\n👤 Cliente: ${c.name}\n📅 Data/Hora: ${dataHora}\n💰 Valor pago: R$ ${val.toFixed(2).replace('.', ',')}\n${saldoTexto}\n──────────────────`;
+    const mioloHistorico = `👑 Pagamento Confirmado!\nR$ ${val.toFixed(2).replace('.', ',')} recebidos na sua conta.\n▫️ Dívida anterior: ${dividaAnteriorTexto}\n${statusPagamentoTexto}`;
     await inserirNotificacao(phone, 'pagamento', val, mioloHistorico);
 
     // SALVA AUTOMATICAMENTE somente depois que o pagamento foi confirmado com sucesso.
