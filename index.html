@@ -267,17 +267,32 @@ async function ativarPushAutoBackground() {
     if (!swRegistration || !swRegistration.active) return;
     if (!('PushManager' in window)) return;
     try {
-        const subExistente = await swRegistration.pushManager.getSubscription();
-        const sub = subExistente || await swRegistration.pushManager.subscribe({
+        const sub = await swRegistration.pushManager.getSubscription() || await swRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
         const subJSON = sub.toJSON();
-        await fetch(`${PUSH_SUPA_URL}/rest/v1/push_subscriptions`, {
+
+        // ADM usa a mesma tabela do cliente, mas com destinatario='adm'.
+        const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/push_subscriptions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': PUSH_SUPA_KEY, 'Authorization': 'Bearer ' + PUSH_SUPA_KEY, 'Prefer': 'resolution=merge-duplicates' },
-            body: JSON.stringify({ phone: 'ADM', endpoint: subJSON.endpoint, p256dh: subJSON.keys.p256dh, auth: subJSON.keys.auth, destinatario: 'adm' })
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': PUSH_SUPA_KEY,
+                'Authorization': 'Bearer ' + PUSH_SUPA_KEY,
+                'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({
+                phone: 'ADM',
+                endpoint: subJSON.endpoint,
+                p256dh: subJSON.keys.p256dh,
+                auth: subJSON.keys.auth,
+                destinatario: 'adm'
+            })
         });
+
+        if (!resp.ok) throw new Error('Falha ao salvar subscription ADM: ' + await resp.text());
+        console.log('[Push] Subscription do ADM salva na tabela única!');
     } catch(e) { console.warn('[Push] Erro:', e); }
 }
 

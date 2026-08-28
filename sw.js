@@ -1,65 +1,118 @@
-// sw.js — Service Worker com suporte a notificações nativas + Web Push
-const CACHE_NAME = 'rei-coxinha-v1';
-const ADM_URL = 'https://jefferson8564.github.io/adm-0/';
+// sw-cliente.js — Service Worker do app do cliente com Web Push
+const CACHE_NAME = 'rei-coxinha-cliente-v1';
+const CLIENTE_URL = 'https://orei-coxinha.vercel.app/';
 
-self.addEventListener('install', e => {
-    self.skipWaiting();
-});
+// ── Gera um ícone PNG com emoji usando OffscreenCanvas ──
+// Retorna uma URL de blob (válida enquanto o SW estiver ativo)
+async function gerarIconeEmoji(emoji, tamanho = 192, corFundo = '#1a1a1a') {
+    try {
+        const canvas = new OffscreenCanvas(tamanho, tamanho);
+        const ctx = canvas.getContext('2d');
 
-self.addEventListener('activate', e => {
-    e.waitUntil(clients.claim());
-});
+        // Fundo arredondado
+        const raio = tamanho * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(raio, 0);
+        ctx.lineTo(tamanho - raio, 0);
+        ctx.quadraticCurveTo(tamanho, 0, tamanho, raio);
+        ctx.lineTo(tamanho, tamanho - raio);
+        ctx.quadraticCurveTo(tamanho, tamanho, tamanho - raio, tamanho);
+        ctx.lineTo(raio, tamanho);
+        ctx.quadraticCurveTo(0, tamanho, 0, tamanho - raio);
+        ctx.lineTo(0, raio);
+        ctx.quadraticCurveTo(0, 0, raio, 0);
+        ctx.closePath();
+        ctx.fillStyle = corFundo;
+        ctx.fill();
 
-// ── Mensagem do app (aba aberta) ───────────────────────
-self.addEventListener('message', e => {
-    if (e.data && e.data.tipo === 'novo_pedido') {
-        const { nome, total } = e.data;
-        self.registration.showNotification('🔔 Novo Pedido!', {
-            body: `${nome} · R$ ${total}`,
-            icon: './icone.png',
-            badge: './icone.png',
-            tag: 'novo-pedido-' + Date.now(),
-            renotify: true,
-            vibrate: [200, 100, 200, 100, 200],
-            requireInteraction: false,
-            silent: false
-        });
+        // Emoji centralizado
+        ctx.font = `${tamanho * 0.58}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, tamanho / 2, tamanho / 2 + tamanho * 0.04);
+
+        const blob = await canvas.convertToBlob({ type: 'image/png' });
+        return URL.createObjectURL(blob);
+    } catch (e) {
+        // OffscreenCanvas não suportado — retorna null (usa fallback)
+        return null;
     }
-});
+}
 
-// ── Web Push do servidor (funciona com aba fechada!) ───
+// ── Mapa de emojis por tipo de notificação ──────────────
+const ICONES_NOTIFICACAO = {
+    pagamento: { emoji: '✅', cor: '#1a3d1a' },
+    reembolso: { emoji: '♻️', cor: '#3d2a00' },
+    default:   { emoji: '✅', cor: '#1a3d1a' },
+};
+
+function detectarTipoNotificacao(data) {
+    const msg = (data.mensagem || data.titulo || '').toLowerCase();
+    if (msg.includes('reembolso'))                  return 'reembolso';
+    if (data.tipo && ICONES_NOTIFICACAO[data.tipo]) return data.tipo;
+    return 'default'; // pagamento é o padrão
+}
+
+// ─────────────────────────────────────────────────────────
+self.addEventListener('install', e => { self.skipWaiting(); });
+
+self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
+
+// ── Web Push ──────────────────────────────────────────────
 self.addEventListener('push', e => {
-    let data = { nome: 'Cliente', total: '0,00', titulo: '🔔 Novo Pedido!' };
+    let data = {
+        titulo: '🛵 O Rei da Coxinha',
+        mensagem: 'Você tem uma nova notificação!'
+    };
     if (e.data) {
         try { data = { ...data, ...e.data.json() }; } catch (_) {}
     }
-    const options = {
-        body: `${data.nome} · R$ ${data.total}`,
-        icon: './icone.png',
-        badge: './icone.png',
-        tag: 'push-pedido',
-        renotify: true,
-        vibrate: [200, 100, 200, 100, 200],
-        requireInteraction: true,
-        silent: false,
-        data: data
-    };
-    e.waitUntil(
-        self.registration.showNotification(data.titulo, options)
-    );
+
+    e.waitUntil((async () => {
+        const tipo   = detectarTipoNotificacao(data);
+        // Pagamentos usam o título solicitado; outros tipos mantêm o título enviado pelo sistema.
+        if (tipo === 'pagamento' && (!data.titulo || data.titulo === '🛵 O Rei da Coxinha')) {
+            data.titulo = '👑 Pagamento Confirmado!';
+        }
+        const config = ICONES_NOTIFICACAO[tipo] || ICONES_NOTIFICACAO.default;
+
+        // Tenta gerar ícone com emoji (OffscreenCanvas)
+        const iconUrl = await gerarIconeEmoji(config.emoji, 192, config.cor);
+
+        const options = {
+            body:              data.mensagem,
+            icon:              iconUrl || './icone.png',   // fallback para arquivo estático
+            badge:             iconUrl || './icone.png',
+            tag:               'push-cliente',
+            renotify:          true,
+            vibrate:           [200, 100, 200, 100, 200],
+            requireInteraction: false,
+            silent:            false,
+            data:              { ...data, _iconUrl: iconUrl }
+        };
+
+        await self.registration.showNotification(data.titulo, options);
+
+        // Libera o blob depois de 60s para não vazar memória
+        if (iconUrl) {
+            setTimeout(() => URL.revokeObjectURL(iconUrl), 60_000);
+        }
+    })());
 });
 
-// ── Clique na notificação ──────────────────────────────
+// ── Clique na notificação ─────────────────────────────────
 self.addEventListener('notificationclick', e => {
     e.notification.close();
+    // Libera blob do ícone imediatamente ao clicar
+    const iconUrl = e.notification.data?._iconUrl;
+    if (iconUrl) URL.revokeObjectURL(iconUrl);
+
     e.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-            // Se já tem o adm aberto, foca nele
             for (const c of list) {
-                if (c.url.startsWith(ADM_URL) && c.focus) return c.focus();
+                if (c.url.startsWith(CLIENTE_URL) && c.focus) return c.focus();
             }
-            // Senão abre o adm
-            return clients.openWindow(ADM_URL);
+            return clients.openWindow(CLIENTE_URL);
         })
     );
 });
