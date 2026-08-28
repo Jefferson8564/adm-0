@@ -268,8 +268,7 @@ async function ativarPushAutoBackground() {
     if (!('PushManager' in window)) return;
     try {
         const subExistente = await swRegistration.pushManager.getSubscription();
-        if (subExistente) return;
-        const sub = await swRegistration.pushManager.subscribe({
+        const sub = subExistente || await swRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
@@ -277,7 +276,7 @@ async function ativarPushAutoBackground() {
         await fetch(`${PUSH_SUPA_URL}/rest/v1/push_subscriptions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': PUSH_SUPA_KEY, 'Authorization': 'Bearer ' + PUSH_SUPA_KEY, 'Prefer': 'resolution=merge-duplicates' },
-            body: JSON.stringify({ endpoint: subJSON.endpoint, p256dh: subJSON.keys.p256dh, auth: subJSON.keys.auth })
+            body: JSON.stringify({ phone: 'ADM', endpoint: subJSON.endpoint, p256dh: subJSON.keys.p256dh, auth: subJSON.keys.auth, destinatario: 'adm' })
         });
     } catch(e) { console.warn('[Push] Erro:', e); }
 }
