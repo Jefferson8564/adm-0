@@ -245,61 +245,131 @@ function urlBase64ToUint8Array(b64) {
 
 let swRegistration = null;
 
-async function iniciarSW() {
-    if (!('serviceWorker' in navigator)) {
-        console.warn('[Notificações] Service Worker não suportado neste navegador.');
-        return null;
+/* ── PAINEL DE DIAGNÓSTICO VISUAL ── */
+function _pushLog(emoji, msg, isErro) {
+    const texto = emoji + ' ' + msg;
+    if (isErro) console.error('[PUSH]', texto);
+    else console.log('[PUSH]', texto);
+
+    let painel = document.getElementById('_pushDiagDiv');
+    if (!painel) {
+        painel = document.createElement('div');
+        painel.id = '_pushDiagDiv';
+        painel.style.cssText = [
+            'position:fixed', 'bottom:0', 'left:0', 'right:0',
+            'background:#0d0720', 'color:#e2d9f3',
+            'font-size:11px', 'font-family:monospace',
+            'padding:10px 14px 14px', 'z-index:99999',
+            'white-space:pre-wrap', 'word-break:break-all',
+            'max-height:50vh', 'overflow-y:auto',
+            'border-top:3px solid #8b5cf6'
+        ].join(';');
+
+        const titulo = document.createElement('div');
+        titulo.style.cssText = 'font-weight:bold;color:#c084fc;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;';
+        titulo.innerHTML = '🔔 DIAGNÓSTICO PUSH <span onclick="document.getElementById(\'_pushDiagDiv\').remove()" style="cursor:pointer;color:#6b7280;">✕ fechar</span>';
+        painel.appendChild(titulo);
+
+        document.body.appendChild(painel);
     }
 
-    try {
-        swRegistration = await navigator.serviceWorker.register('./sw.js', {
-            scope: './'
-        });
-
-        await navigator.serviceWorker.ready;
-
-        swRegistration = await navigator.serviceWorker.getRegistration('./');
-
-        console.log('[Notificações] Service Worker registrado:', swRegistration?.scope);
-
-        if (Notification.permission === 'granted') {
-            await ativarPushAutoBackground();
-        }
-
-        return swRegistration;
-    } catch (e) {
-        console.warn('[Notificações] Erro ao registrar sw.js:', e);
-        return null;
-    }
+    const linha = document.createElement('div');
+    linha.style.color = isErro ? '#fca5a5' : '#bbf7d0';
+    linha.textContent = texto;
+    painel.appendChild(linha);
+    painel.scrollTop = painel.scrollHeight;
 }
 
-async function ativarPushAutoBackground() {
-    if (!swRegistration) {
-        swRegistration = await navigator.serviceWorker.ready;
-    }
+/* ── FLUXO COMPLETO DE PUSH ── */
+async function executarFluxoPush() {
+    _pushLog('🚀', 'Iniciando fluxo de Push...', false);
 
+    // PASSO 1 — Verificar suporte
+    if (!('serviceWorker' in navigator)) {
+        _pushLog('❌', 'Service Worker NÃO suportado neste navegador.', true);
+        return;
+    }
     if (!('PushManager' in window)) {
-        console.warn('[Notificações] PushManager não é suportado.');
-        return false;
+        _pushLog('❌', 'PushManager NÃO suportado neste navegador.', true);
+        return;
+    }
+    if (!('Notification' in window)) {
+        _pushLog('❌', 'Notification API NÃO suportada.', true);
+        return;
+    }
+    _pushLog('✅', 'Suporte a SW + PushManager + Notification: OK', false);
+
+    // PASSO 2 — Registrar SW-ADM.js
+    try {
+        _pushLog('⚙️', 'Registrando ./SW-ADM.js...', false);
+        swRegistration = await navigator.serviceWorker.register('./SW-ADM.js', { scope: './' });
+        await navigator.serviceWorker.ready;
+        swRegistration = await navigator.serviceWorker.getRegistration('./');
+        _pushLog('✅', 'SW-ADM.js registrado. Scope: ' + (swRegistration?.scope || '?'), false);
+    } catch (e) {
+        _pushLog('❌', 'Erro ao registrar SW-ADM.js: ' + e.message, true);
+        return;
     }
 
+    // PASSO 3 — Pedir permissão (se ainda não concedida)
+    _pushLog('🔔', 'Permissão atual: ' + Notification.permission, false);
+
+    if (Notification.permission === 'denied') {
+        _pushLog('❌', 'Permissão BLOQUEADA pelo usuário. Desbloqueie nas configurações do navegador.', true);
+        return;
+    }
+
+    if (Notification.permission !== 'granted') {
+        _pushLog('⏳', 'Solicitando permissão ao usuário...', false);
+        const result = await Notification.requestPermission();
+        _pushLog(result === 'granted' ? '✅' : '❌',
+            'Resultado da permissão: ' + result,
+            result !== 'granted');
+        if (result !== 'granted') return;
+    } else {
+        _pushLog('✅', 'Permissão já concedida.', false);
+    }
+
+    // PASSO 4 — Criar PushSubscription
     try {
+        _pushLog('⏳', 'Verificando subscription existente...', false);
         let sub = await swRegistration.pushManager.getSubscription();
 
-        if (!sub) {
+        if (sub) {
+            _pushLog('ℹ️', 'Subscription existente encontrada. Usando ela.', false);
+        } else {
+            _pushLog('⏳', 'Nenhuma subscription. Criando nova...', false);
             sub = await swRegistration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
             });
+            _pushLog('✅', 'Nova PushSubscription criada.', false);
         }
 
         const subJSON = sub.toJSON();
+        _pushLog('📋', 'endpoint: ' + subJSON.endpoint, false);
+        _pushLog('📋', 'p256dh: ' + (subJSON.keys?.p256dh || 'AUSENTE'), false);
+        _pushLog('📋', 'auth: ' + (subJSON.keys?.auth || 'AUSENTE'), false);
 
         if (!subJSON.endpoint || !subJSON.keys?.p256dh || !subJSON.keys?.auth) {
-            throw new Error('Subscription Web Push incompleta.');
+            _pushLog('❌', 'Subscription INCOMPLETA — faltam chaves. subJSON: ' + JSON.stringify(subJSON), true);
+            return;
         }
 
-        const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/notificacoes_push`, {
+        // PASSO 5 — Salvar em web_push_subscriptions
+        _pushLog('⏳', 'Salvando em public.web_push_subscriptions...', false);
+
+        const payload = {
+            phone: 'ADM',
+            destinatario: 'adm',
+            endpoint: subJSON.endpoint,
+            p256dh: subJSON.keys.p256dh,
+            auth: subJSON.keys.auth,
+            updated_at: new Date().toISOString()
+        };
+        _pushLog('📦', 'Payload: ' + JSON.stringify(payload), false);
+
+        const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/web_push_subscriptions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -307,62 +377,45 @@ async function ativarPushAutoBackground() {
                 'Authorization': 'Bearer ' + PUSH_SUPA_KEY,
                 'Prefer': 'resolution=merge-duplicates,return=representation'
             },
-            body: JSON.stringify({
-                phone: 'ADM',
-                destinatario: 'adm',
-                endpoint: subJSON.endpoint,
-                p256dh: subJSON.keys.p256dh,
-                auth: subJSON.keys.auth,
-                updated_at: new Date().toISOString()
-            })
+            body: JSON.stringify(payload)
         });
 
+        const respText = await resp.text();
+        _pushLog('📡', 'Supabase status: ' + resp.status, false);
+        _pushLog('📡', 'Supabase body: ' + respText, !resp.ok);
+
         if (!resp.ok) {
-            const texto = await resp.text();
-            throw new Error('Falha ao salvar subscription ADM: ' + texto);
+            _pushLog('❌', 'FALHA ao salvar. Status ' + resp.status + ': ' + respText, true);
+            return;
         }
 
-        console.log('[Notificações] Subscription do ADM registrada com sucesso.');
-        return true;
+        _pushLog('🎉', 'Subscription salva com sucesso em web_push_subscriptions!', false);
+
     } catch (e) {
-        console.warn('[Notificações] Erro ao ativar/salvar Push:', e);
-        return false;
+        _pushLog('❌', 'Exceção no fluxo de Push: ' + e.message, true);
     }
 }
 
+/* Mantém compatibilidade com qualquer botão que chame pedirPermissaoNotificacao() */
 async function pedirPermissaoNotificacao() {
-    if (!('Notification' in window)) {
-        console.warn('[Notificações] Notification API não suportada.');
-        return false;
-    }
+    await executarFluxoPush();
+}
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.warn('[Notificações] Web Push não suportado neste navegador.');
-        return false;
-    }
+/* Mantém compatibilidade com chamadas a ativarPushAutoBackground() */
+async function ativarPushAutoBackground() {
+    await executarFluxoPush();
+}
 
-    if (Notification.permission === 'granted') {
-        return await ativarPushAutoBackground();
-    }
-
-    if (Notification.permission === 'denied') {
-        console.warn('[Notificações] Permissão de notificações está bloqueada.');
-        return false;
-    }
-
-    const result = await Notification.requestPermission();
-
-    if (result === 'granted') {
-        return await ativarPushAutoBackground();
-    }
-
-    return false;
+/* Mantém compatibilidade com iniciarSW() */
+async function iniciarSW() {
+    await executarFluxoPush();
+    return swRegistration;
 }
 
 window.addEventListener('load', () => {
     setTimeout(async () => {
-        await iniciarSW();
-    }, 500);
+        await executarFluxoPush();
+    }, 800);
 });
 </script>
 </head>
