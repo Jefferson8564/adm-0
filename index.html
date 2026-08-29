@@ -246,118 +246,87 @@ function urlBase64ToUint8Array(b64) {
 let swRegistration = null;
 
 /* ── PAINEL DE DIAGNÓSTICO VISUAL ── */
-function _pushLog(emoji, msg, isErro) {
-    const texto = emoji + ' ' + msg;
-    if (isErro) console.error('[PUSH]', texto);
-    else console.log('[PUSH]', texto);
 
-    let painel = document.getElementById('_pushDiagDiv');
-    if (!painel) {
-        painel = document.createElement('div');
-        painel.id = '_pushDiagDiv';
-        painel.style.cssText = [
-            'position:fixed', 'bottom:0', 'left:0', 'right:0',
-            'background:#0d0720', 'color:#e2d9f3',
-            'font-size:11px', 'font-family:monospace',
-            'padding:10px 14px 14px', 'z-index:99999',
-            'white-space:pre-wrap', 'word-break:break-all',
-            'max-height:50vh', 'overflow-y:auto',
-            'border-top:3px solid #8b5cf6'
-        ].join(';');
-
-        const titulo = document.createElement('div');
-        titulo.style.cssText = 'font-weight:bold;color:#c084fc;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;';
-        titulo.innerHTML = '🔔 DIAGNÓSTICO PUSH <span onclick="document.getElementById(\'_pushDiagDiv\').remove()" style="cursor:pointer;color:#6b7280;">✕ fechar</span>';
-        painel.appendChild(titulo);
-
-        document.body.appendChild(painel);
-    }
-
-    const linha = document.createElement('div');
-    linha.style.color = isErro ? '#fca5a5' : '#bbf7d0';
-    linha.textContent = texto;
-    painel.appendChild(linha);
-    painel.scrollTop = painel.scrollHeight;
-}
 
 /* ── FLUXO COMPLETO DE PUSH ── */
+let _pushFluxoRodando = false;
 async function executarFluxoPush() {
-    _pushLog('🚀', 'Iniciando fluxo de Push...', false);
+    if (_pushFluxoRodando) { console.log('[PUSH] Fluxo já em execução — ignorando chamada duplicada.'); return; }
+    _pushFluxoRodando = true;
+    console.log('[PUSH] 🚀 Iniciando fluxo de Push...');
 
     // PASSO 1 — Verificar suporte
     if (!('serviceWorker' in navigator)) {
-        _pushLog('❌', 'Service Worker NÃO suportado neste navegador.', true);
+        console.error('[PUSH] ❌ Service Worker NÃO suportado neste navegador.'); _pushFluxoRodando = false;
         return;
     }
     if (!('PushManager' in window)) {
-        _pushLog('❌', 'PushManager NÃO suportado neste navegador.', true);
+        console.error('[PUSH] ❌ PushManager NÃO suportado neste navegador.'); _pushFluxoRodando = false;
         return;
     }
     if (!('Notification' in window)) {
-        _pushLog('❌', 'Notification API NÃO suportada.', true);
+        console.error('[PUSH] ❌ Notification API NÃO suportada.'); _pushFluxoRodando = false;
         return;
     }
-    _pushLog('✅', 'Suporte a SW + PushManager + Notification: OK', false);
+    console.log('[PUSH] ✅ Suporte a SW + PushManager + Notification: OK');
 
     // PASSO 2 — Registrar SW-ADM.js
     try {
-        _pushLog('⚙️', 'Registrando ./SW-ADM.js...', false);
+        console.log('[PUSH] ⚙️ Registrando ./SW-ADM.js...');
         swRegistration = await navigator.serviceWorker.register('./SW-ADM.js', { scope: './' });
         await navigator.serviceWorker.ready;
         swRegistration = await navigator.serviceWorker.getRegistration('./');
-        _pushLog('✅', 'SW-ADM.js registrado. Scope: ' + (swRegistration?.scope || '?'), false);
+        console.log('[PUSH] ✅ SW-ADM.js registrado. Scope:', swRegistration?.scope || '?');
     } catch (e) {
-        _pushLog('❌', 'Erro ao registrar SW-ADM.js: ' + e.message, true);
+        console.error('[PUSH] ❌ Erro ao registrar SW-ADM.js:', e.message); _pushFluxoRodando = false;
         return;
     }
 
     // PASSO 3 — Pedir permissão (se ainda não concedida)
-    _pushLog('🔔', 'Permissão atual: ' + Notification.permission, false);
+    console.log('[PUSH] 🔔 Permissão atual:', Notification.permission);
 
     if (Notification.permission === 'denied') {
-        _pushLog('❌', 'Permissão BLOQUEADA pelo usuário. Desbloqueie nas configurações do navegador.', true);
+        console.error('[PUSH] ❌ Permissão BLOQUEADA. Desbloqueie nas configurações do navegador.'); _pushFluxoRodando = false;
         return;
     }
 
     if (Notification.permission !== 'granted') {
-        _pushLog('⏳', 'Solicitando permissão ao usuário...', false);
+        console.log('[PUSH] ⏳ Solicitando permissão ao usuário...');
         const result = await Notification.requestPermission();
-        _pushLog(result === 'granted' ? '✅' : '❌',
-            'Resultado da permissão: ' + result,
-            result !== 'granted');
-        if (result !== 'granted') return;
+        console.log('[PUSH]', result === 'granted' ? '✅' : '❌', 'Resultado da permissão:', result);
+        if (result !== 'granted') { _pushFluxoRodando = false; return; }
     } else {
-        _pushLog('✅', 'Permissão já concedida.', false);
+        console.log('[PUSH] ✅ Permissão já concedida.');
     }
 
     // PASSO 4 — Criar PushSubscription
     try {
-        _pushLog('⏳', 'Verificando subscription existente...', false);
+        console.log('[PUSH] ⏳ Verificando subscription existente...');
         let sub = await swRegistration.pushManager.getSubscription();
 
         if (sub) {
-            _pushLog('ℹ️', 'Subscription existente encontrada. Usando ela.', false);
+            console.log('[PUSH] ℹ️ Subscription existente encontrada. Usando ela.');
         } else {
-            _pushLog('⏳', 'Nenhuma subscription. Criando nova...', false);
+            console.log('[PUSH] ⏳ Nenhuma subscription. Criando nova...');
             sub = await swRegistration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
             });
-            _pushLog('✅', 'Nova PushSubscription criada.', false);
+            console.log('[PUSH] ✅ Nova PushSubscription criada.');
         }
 
         const subJSON = sub.toJSON();
-        _pushLog('📋', 'endpoint: ' + subJSON.endpoint, false);
-        _pushLog('📋', 'p256dh: ' + (subJSON.keys?.p256dh || 'AUSENTE'), false);
-        _pushLog('📋', 'auth: ' + (subJSON.keys?.auth || 'AUSENTE'), false);
+        console.log('[PUSH] 📋 endpoint:', subJSON.endpoint);
+        console.log('[PUSH] 📋 p256dh:', subJSON.keys?.p256dh || 'AUSENTE');
+        console.log('[PUSH] 📋 auth:', subJSON.keys?.auth || 'AUSENTE');
 
         if (!subJSON.endpoint || !subJSON.keys?.p256dh || !subJSON.keys?.auth) {
-            _pushLog('❌', 'Subscription INCOMPLETA — faltam chaves. subJSON: ' + JSON.stringify(subJSON), true);
+            console.error('[PUSH] ❌ Subscription INCOMPLETA — faltam chaves.', JSON.stringify(subJSON));
             return;
         }
 
         // PASSO 5 — Salvar em web_push_subscriptions
-        _pushLog('⏳', 'Salvando em public.web_push_subscriptions...', false);
+        console.log('[PUSH] ⏳ Salvando em public.web_push_subscriptions...');
 
         const payload = {
             phone: 'ADM',
@@ -367,7 +336,7 @@ async function executarFluxoPush() {
             auth: subJSON.keys.auth,
             updated_at: new Date().toISOString()
         };
-        _pushLog('📦', 'Payload: ' + JSON.stringify(payload), false);
+        console.log('[PUSH] 📦 Payload:', JSON.stringify(payload));
 
         const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/web_push_subscriptions`, {
             method: 'POST',
@@ -381,18 +350,21 @@ async function executarFluxoPush() {
         });
 
         const respText = await resp.text();
-        _pushLog('📡', 'Supabase status: ' + resp.status, false);
-        _pushLog('📡', 'Supabase body: ' + respText, !resp.ok);
+        console.log('[PUSH] 📡 Supabase status:', resp.status);
+        if (!resp.ok) console.error('[PUSH] 📡 Supabase body:', respText);
+        else console.log('[PUSH] 📡 Supabase body:', respText);
 
         if (!resp.ok) {
-            _pushLog('❌', 'FALHA ao salvar. Status ' + resp.status + ': ' + respText, true);
+            console.error('[PUSH] ❌ FALHA ao salvar. Status', resp.status + ':', respText);
             return;
         }
 
-        _pushLog('🎉', 'Subscription salva com sucesso em web_push_subscriptions!', false);
+        console.log('[PUSH] 🎉 Subscription salva com sucesso em web_push_subscriptions!');
 
     } catch (e) {
-        _pushLog('❌', 'Exceção no fluxo de Push: ' + e.message, true);
+        console.error('[PUSH] ❌ Exceção no fluxo de Push:', e.message);
+    } finally {
+        _pushFluxoRodando = false;
     }
 }
 
@@ -412,11 +384,7 @@ async function iniciarSW() {
     return swRegistration;
 }
 
-window.addEventListener('load', () => {
-    setTimeout(async () => {
-        await executarFluxoPush();
-    }, 800);
-});
+/* executarFluxoPush() é iniciado pelo initAdmin() via pedirPermissaoNotificacao() */
 </script>
 </head>
 <body>
