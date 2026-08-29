@@ -1,152 +1,111 @@
-/* sw.js — Service Worker único de notificações */
+/* SW-ADM.js — Service Worker de notificações Push do ADM */
 
-const CACHE_NAME = "notificacoes-v1";
+const CACHE_NAME = 'sw-adm-v2';
 
-self.addEventListener("install", event => {
+self.addEventListener('install', function(event) {
+    console.log('[SW-ADM] install');
     event.waitUntil(
-        caches.open(CACHE_NAME).then(() => self.skipWaiting())
+        caches.open(CACHE_NAME).then(function() {
+            return self.skipWaiting();
+        })
     );
 });
 
-self.addEventListener("activate", event => {
+self.addEventListener('activate', function(event) {
+    console.log('[SW-ADM] activate');
     event.waitUntil(
         Promise.all([
             self.clients.claim(),
-            limparCachesAntigos()
+            caches.keys().then(function(nomes) {
+                return Promise.all(
+                    nomes
+                        .filter(function(nome) { return nome !== CACHE_NAME; })
+                        .map(function(nome) { return caches.delete(nome); })
+                );
+            })
         ])
     );
 });
 
-async function limparCachesAntigos() {
-    const nomes = await caches.keys();
-
-    await Promise.all(
-        nomes
-            .filter(nome => nome !== CACHE_NAME)
-            .map(nome => caches.delete(nome))
-    );
-}
-
-self.addEventListener("push", event => {
+self.addEventListener('push', function(event) {
+    console.log('[SW-ADM] push recebido');
     event.waitUntil(mostrarNotificacao(event));
 });
 
-async function mostrarNotificacao(event) {
-    let data = {};
+function mostrarNotificacao(event) {
+    var data = {};
 
     try {
         data = event.data ? event.data.json() : {};
-    } catch (erro) {
-        console.warn("[SW] Push não veio como JSON:", erro);
-
+    } catch (e) {
         try {
-            data = {
-                mensagem: event.data ? event.data.text() : ""
-            };
+            data = { mensagem: event.data ? event.data.text() : '' };
         } catch (_) {}
     }
 
-    const titulo =
-        data.titulo ||
-        data.title ||
-        "Nova notificação";
+    var titulo = data.titulo || data.title || 'Nova notificação';
+    var mensagem = data.mensagem || data.body || 'Você recebeu uma nova notificação.';
+    var notificacaoId = data.notificacao_id || data.id || null;
 
-    const mensagem =
-        data.mensagem ||
-        data.body ||
-        "Você recebeu uma nova notificação.";
-
-    const notificacaoId =
-        data.notificacao_id ||
-        data.id ||
-        null;
-
-    const options = {
+    var options = {
         body: mensagem,
-
-        icon:
-            data.icon ||
-            "/icon-192.png",
-
-        badge:
-            data.badge ||
-            "/icon-192.png",
-
-        tag:
-            data.tag ||
-            (
-                notificacaoId
-                    ? `notificacao-${notificacaoId}`
-                    : "notificacao"
-            ),
-
+        icon: data.icon || '/icon-192.png',
+        badge: data.badge || '/icon-192.png',
+        tag: data.tag || (notificacaoId ? 'notificacao-' + notificacaoId : 'notificacao'),
         renotify: true,
-
         data: {
             notificacao_id: notificacaoId,
-            tipo: data.tipo || "geral",
-            valor: data.valor ?? null,
-            url: data.url || data.link || "./"
+            tipo: data.tipo || 'geral',
+            valor: data.valor !== undefined ? data.valor : null,
+            url: data.url || data.link || './'
         }
     };
 
-    await self.registration.showNotification(
-        titulo,
-        options
-    );
-});
-
-self.addEventListener("notificationclick", event => {
-    event.notification.close();
-
-    const url =
-        event.notification.data?.url ||
-        "./";
-
-    event.waitUntil(
-        abrirOuFocar(url)
-    );
-});
-
-async function abrirOuFocar(url) {
-    const clientes = await self.clients.matchAll({
-        type: "window",
-        includeUncontrolled: true
-    });
-
-    const destino = new URL(
-        url,
-        self.location.origin
-    );
-
-    for (const cliente of clientes) {
-        try {
-            const atual = new URL(cliente.url);
-
-            if (
-                atual.origin === destino.origin &&
-                "focus" in cliente
-            ) {
-                if ("navigate" in cliente) {
-                    await cliente.navigate(
-                        destino.href
-                    );
-                }
-
-                return cliente.focus();
-            }
-        } catch (_) {}
-    }
-
-    if (self.clients.openWindow) {
-        return self.clients.openWindow(
-            destino.href
-        );
-    }
+    return self.registration.showNotification(titulo, options);
 }
 
-self.addEventListener("message", event => {
-    if (event.data?.tipo === "ATIVAR_SW") {
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+
+    var url = './';
+    if (event.notification.data && event.notification.data.url) {
+        url = event.notification.data.url;
+    }
+
+    event.waitUntil(abrirOuFocar(url));
+});
+
+function abrirOuFocar(url) {
+    return self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(function(clientes) {
+            var destino;
+            try {
+                destino = new URL(url, self.location.origin);
+            } catch (_) {
+                destino = { href: url, origin: self.location.origin };
+            }
+
+            for (var i = 0; i < clientes.length; i++) {
+                var cliente = clientes[i];
+                try {
+                    var atual = new URL(cliente.url);
+                    if (atual.origin === destino.origin && 'focus' in cliente) {
+                        if ('navigate' in cliente) {
+                            cliente.navigate(destino.href);
+                        }
+                        return cliente.focus();
+                    }
+                } catch (_) {}
+            }
+
+            if (self.clients.openWindow) {
+                return self.clients.openWindow(destino.href);
+            }
+        });
+}
+
+self.addEventListener('message', function(event) {
+    if (event.data && event.data.tipo === 'ATIVAR_SW') {
         self.skipWaiting();
     }
 });
