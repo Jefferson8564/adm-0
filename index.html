@@ -1023,18 +1023,39 @@ async function calcularValorRealPedido(itemsTexto) {
 }
 
 // ===== NOTIFICAÇÕES: função centralizada =====
-async function inserirNotificacao(customer_phone, tipo, valor, descricao) {
-    const { error } = await sb.from('notificacoes').insert({
-        customer_phone,
-        tipo,
+// Novo formato simplificado: destinatario define para quem vai o Push.
+// - destinatario = 'cliente' → phone é obrigatório (telefone do cliente)
+// - destinatario = 'adm'     → phone pode ser null
+// 'valor' continua sendo gravado no banco (usado pelo histórico financeiro),
+// mas NÃO é enviado no Push — o Push usa somente titulo + mensagem + url.
+async function inserirNotificacao(destinatario, phone, titulo, mensagem, valor = 0, url = '/') {
+    const { data, error } = await sb.from('notificacoes').insert({
+        phone: phone || null,
+        destinatario,
+        titulo,
+        mensagem,
         valor: Number(valor) || 0,
-        descricao
-    });
+        url
+    }).select('id').single();
+
     if (error) {
-        console.error(`❌ [Notificação] ERRO (${tipo} → ${customer_phone}):`, error.message);
-    } else {
-        console.log(`✅ [Notificação] ${tipo} R$ ${Number(valor).toFixed(2)} → ${customer_phone}`);
+        console.error(`❌ [Notificação] ERRO (${destinatario} → ${phone}):`, error.message);
+        return null;
     }
+
+    console.log(`✅ [Notificação] ${destinatario} → ${phone || '(sem phone)'} · id ${data.id}`);
+
+    // Chama a dynamic-function UMA ÚNICA VEZ, para este INSERT específico
+    try {
+        const { error: fnError } = await sb.functions.invoke('dynamic-function', {
+            body: { notificacao_id: data.id }
+        });
+        if (fnError) console.error('❌ [Notificação] Erro ao chamar dynamic-function:', fnError.message);
+    } catch (e) {
+        console.error('❌ [Notificação] Exceção ao chamar dynamic-function:', e.message);
+    }
+
+    return data.id;
 }
 
 // FUSO HORÁRIO SÃO PAULO
@@ -1943,7 +1964,7 @@ async function executarPayDebt(phone, val) {
 
     // Registra notificação de pagamento
     const mioloHistorico = `👑 Pagamento Confirmado!\nR$ ${val.toFixed(2).replace('.', ',')} recebidos na sua conta.\n▫️ Dívida anterior: ${dividaAnteriorTexto}\n${statusPagamentoTexto}`;
-    await inserirNotificacao(phone, 'pagamento', val, mioloHistorico);
+    await inserirNotificacao('cliente', phone, '💰 Pagamento Confirmado', mioloHistorico, val);
 
     // SALVA AUTOMATICAMENTE somente depois que o pagamento foi confirmado com sucesso.
     // Cada cliente possui sua própria lista local e são mantidos somente os 10 últimos pagamentos.
@@ -2642,7 +2663,7 @@ async function executarCancelamentoPedido(orderId) {
         const descReembolso = creditoUsado > 0
             ? `Pedido cancelado — R$ ${Number(o.total).toFixed(2).replace('.',',')} + crédito R$ ${creditoUsado.toFixed(2).replace('.',',')} devolvido`
             : 'Pedido cancelado pelo ADM';
-        await inserirNotificacao(o.customer_phone, 'reembolso', valorReembolso, descReembolso);
+        await inserirNotificacao('cliente', o.customer_phone, '💰 Reembolso', descReembolso, valorReembolso);
     }
 
     const isFiadoLocal = (o.emissor || '').toUpperCase() === 'ADM' || o.emissor === '🤖𝕕𝕚𝕟𝕠';
@@ -3128,8 +3149,8 @@ async function executarCancelamentoAutoRefazer(execIndex, orderId, phone, total,
         const descReembolso3 = creditoUsado3 > 0
             ? `Pedido cancelado — R$ ${Number(total).toFixed(2).replace('.',',')} + crédito R$ ${creditoUsado3.toFixed(2).replace('.',',')} devolvido`
             : 'Pedido cancelado pelo ADM';
-        await inserirNotificacao(phone, 'reembolso', valorReembolso3, descReembolso3);
-    } catch(e) { await inserirNotificacao(phone, 'reembolso', Number(total) || 0, 'Pedido cancelado pelo ADM'); }
+        await inserirNotificacao('cliente', phone, '💰 Reembolso', descReembolso3, valorReembolso3);
+    } catch(e) { await inserirNotificacao('cliente', phone, '💰 Reembolso', 'Pedido cancelado pelo ADM', Number(total) || 0); }
 
     // Remove do histórico local
     const historico = JSON.parse(localStorage.getItem('autoRefazer_historico') || '[]');
