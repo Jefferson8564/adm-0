@@ -246,66 +246,124 @@ function urlBase64ToUint8Array(b64) {
 let swRegistration = null;
 
 async function iniciarSW() {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator)) {
+        console.warn('[Notificações] Service Worker não suportado neste navegador.');
+        return null;
+    }
+
     try {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        if (regs.length > 0) { swRegistration = regs[0]; } 
-        else { swRegistration = await navigator.serviceWorker.register('./sw.js'); }
-        if (swRegistration.installing || swRegistration.waiting) {
-            await new Promise(resolve => {
-                const sw = swRegistration.installing || swRegistration.waiting;
-                sw.addEventListener('statechange', function h() {
-                    if (sw.state === 'activated') { sw.removeEventListener('statechange', h); resolve(); }
-                });
-            });
+        swRegistration = await navigator.serviceWorker.register('./sw.js', {
+            scope: './'
+        });
+
+        await navigator.serviceWorker.ready;
+
+        swRegistration = await navigator.serviceWorker.getRegistration('./');
+
+        console.log('[Notificações] Service Worker registrado:', swRegistration?.scope);
+
+        if (Notification.permission === 'granted') {
+            await ativarPushAutoBackground();
         }
-        if (Notification.permission === 'granted') await ativarPushAutoBackground();
-    } catch(e) { console.warn('[SW] Erro:', e); }
+
+        return swRegistration;
+    } catch (e) {
+        console.warn('[Notificações] Erro ao registrar sw.js:', e);
+        return null;
+    }
 }
 
 async function ativarPushAutoBackground() {
-    if (!swRegistration || !swRegistration.active) return;
-    if (!('PushManager' in window)) return;
+    if (!swRegistration) {
+        swRegistration = await navigator.serviceWorker.ready;
+    }
+
+    if (!('PushManager' in window)) {
+        console.warn('[Notificações] PushManager não é suportado.');
+        return false;
+    }
+
     try {
-        const sub = await swRegistration.pushManager.getSubscription() || await swRegistration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
+        let sub = await swRegistration.pushManager.getSubscription();
+
+        if (!sub) {
+            sub = await swRegistration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+            });
+        }
+
         const subJSON = sub.toJSON();
 
-        // ADM usa a mesma tabela do cliente, mas com destinatario='adm'.
-        const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/push_subscriptions`, {
+        if (!subJSON.endpoint || !subJSON.keys?.p256dh || !subJSON.keys?.auth) {
+            throw new Error('Subscription Web Push incompleta.');
+        }
+
+        const resp = await fetch(`${PUSH_SUPA_URL}/rest/v1/notificacoes_push`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'apikey': PUSH_SUPA_KEY,
                 'Authorization': 'Bearer ' + PUSH_SUPA_KEY,
-                'Prefer': 'resolution=merge-duplicates'
+                'Prefer': 'resolution=merge-duplicates,return=representation'
             },
             body: JSON.stringify({
                 phone: 'ADM',
+                destinatario: 'adm',
                 endpoint: subJSON.endpoint,
                 p256dh: subJSON.keys.p256dh,
                 auth: subJSON.keys.auth,
-                destinatario: 'adm'
+                updated_at: new Date().toISOString()
             })
         });
 
-        if (!resp.ok) throw new Error('Falha ao salvar subscription ADM: ' + await resp.text());
-        console.log('[Push] Subscription do ADM salva na tabela única!');
-    } catch(e) { console.warn('[Push] Erro:', e); }
+        if (!resp.ok) {
+            const texto = await resp.text();
+            throw new Error('Falha ao salvar subscription ADM: ' + texto);
+        }
+
+        console.log('[Notificações] Subscription do ADM registrada com sucesso.');
+        return true;
+    } catch (e) {
+        console.warn('[Notificações] Erro ao ativar/salvar Push:', e);
+        return false;
+    }
 }
 
 async function pedirPermissaoNotificacao() {
-    if (!('Notification' in window)) return false;
-    if (Notification.permission === 'granted') { await ativarPushAutoBackground(); return true; }
-    if (Notification.permission === 'denied') return false;
+    if (!('Notification' in window)) {
+        console.warn('[Notificações] Notification API não suportada.');
+        return false;
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('[Notificações] Web Push não suportado neste navegador.');
+        return false;
+    }
+
+    if (Notification.permission === 'granted') {
+        return await ativarPushAutoBackground();
+    }
+
+    if (Notification.permission === 'denied') {
+        console.warn('[Notificações] Permissão de notificações está bloqueada.');
+        return false;
+    }
+
     const result = await Notification.requestPermission();
-    if (result === 'granted') { await ativarPushAutoBackground(); return true; }
+
+    if (result === 'granted') {
+        return await ativarPushAutoBackground();
+    }
+
     return false;
 }
 
-window.addEventListener('load', () => { setTimeout(iniciarSW, 500); });
+window.addEventListener('load', () => {
+    setTimeout(async () => {
+        await iniciarSW();
+    }, 500);
+});
 </script>
 </head>
 <body>
@@ -2181,9 +2239,6 @@ function iniciarRealtimePedidos() {
                     _renderOrderList();
                     _tocarSomPedido();
                     showToast({ type: 'success', title: '🔔 Novo pedido!', body: `${novo.customer_name} · R$ ${Number(novo.total||0).toFixed(2).replace('.',',')}`, duration: 5000 });
-                    if (swRegistration && swRegistration.active && Notification.permission === 'granted') {
-                        swRegistration.active.postMessage({ tipo: 'novo_pedido', nome: novo.customer_name || 'Cliente', total: Number(novo.total||0).toFixed(2).replace('.',',') });
-                    }
                 }
             } else if (eventType === 'UPDATE') {
                 if ((novo.status || '') === 'Em produção') {

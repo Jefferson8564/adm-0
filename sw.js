@@ -1,118 +1,152 @@
-// sw-cliente.js — Service Worker do app do cliente com Web Push
-const CACHE_NAME = 'rei-coxinha-cliente-v1';
-const CLIENTE_URL = 'https://orei-coxinha.vercel.app/';
+/* sw.js — Service Worker único de notificações */
 
-// ── Gera um ícone PNG com emoji usando OffscreenCanvas ──
-// Retorna uma URL de blob (válida enquanto o SW estiver ativo)
-async function gerarIconeEmoji(emoji, tamanho = 192, corFundo = '#1a1a1a') {
-    try {
-        const canvas = new OffscreenCanvas(tamanho, tamanho);
-        const ctx = canvas.getContext('2d');
+const CACHE_NAME = "notificacoes-v1";
 
-        // Fundo arredondado
-        const raio = tamanho * 0.22;
-        ctx.beginPath();
-        ctx.moveTo(raio, 0);
-        ctx.lineTo(tamanho - raio, 0);
-        ctx.quadraticCurveTo(tamanho, 0, tamanho, raio);
-        ctx.lineTo(tamanho, tamanho - raio);
-        ctx.quadraticCurveTo(tamanho, tamanho, tamanho - raio, tamanho);
-        ctx.lineTo(raio, tamanho);
-        ctx.quadraticCurveTo(0, tamanho, 0, tamanho - raio);
-        ctx.lineTo(0, raio);
-        ctx.quadraticCurveTo(0, 0, raio, 0);
-        ctx.closePath();
-        ctx.fillStyle = corFundo;
-        ctx.fill();
-
-        // Emoji centralizado
-        ctx.font = `${tamanho * 0.58}px serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(emoji, tamanho / 2, tamanho / 2 + tamanho * 0.04);
-
-        const blob = await canvas.convertToBlob({ type: 'image/png' });
-        return URL.createObjectURL(blob);
-    } catch (e) {
-        // OffscreenCanvas não suportado — retorna null (usa fallback)
-        return null;
-    }
-}
-
-// ── Mapa de emojis por tipo de notificação ──────────────
-const ICONES_NOTIFICACAO = {
-    pagamento: { emoji: '✅', cor: '#1a3d1a' },
-    reembolso: { emoji: '♻️', cor: '#3d2a00' },
-    default:   { emoji: '✅', cor: '#1a3d1a' },
-};
-
-function detectarTipoNotificacao(data) {
-    const msg = (data.mensagem || data.titulo || '').toLowerCase();
-    if (msg.includes('reembolso'))                  return 'reembolso';
-    if (data.tipo && ICONES_NOTIFICACAO[data.tipo]) return data.tipo;
-    return 'default'; // pagamento é o padrão
-}
-
-// ─────────────────────────────────────────────────────────
-self.addEventListener('install', e => { self.skipWaiting(); });
-
-self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
-
-// ── Web Push ──────────────────────────────────────────────
-self.addEventListener('push', e => {
-    let data = {
-        titulo: '🛵 O Rei da Coxinha',
-        mensagem: 'Você tem uma nova notificação!'
-    };
-    if (e.data) {
-        try { data = { ...data, ...e.data.json() }; } catch (_) {}
-    }
-
-    e.waitUntil((async () => {
-        const tipo   = detectarTipoNotificacao(data);
-        // Pagamentos usam o título solicitado; outros tipos mantêm o título enviado pelo sistema.
-        if (tipo === 'pagamento' && (!data.titulo || data.titulo === '🛵 O Rei da Coxinha')) {
-            data.titulo = '👑 Pagamento Confirmado!';
-        }
-        const config = ICONES_NOTIFICACAO[tipo] || ICONES_NOTIFICACAO.default;
-
-        // Tenta gerar ícone com emoji (OffscreenCanvas)
-        const iconUrl = await gerarIconeEmoji(config.emoji, 192, config.cor);
-
-        const options = {
-            body:              data.mensagem,
-            icon:              iconUrl || './icone.png',   // fallback para arquivo estático
-            badge:             iconUrl || './icone.png',
-            tag:               'push-cliente',
-            renotify:          true,
-            vibrate:           [200, 100, 200, 100, 200],
-            requireInteraction: false,
-            silent:            false,
-            data:              { ...data, _iconUrl: iconUrl }
-        };
-
-        await self.registration.showNotification(data.titulo, options);
-
-        // Libera o blob depois de 60s para não vazar memória
-        if (iconUrl) {
-            setTimeout(() => URL.revokeObjectURL(iconUrl), 60_000);
-        }
-    })());
+self.addEventListener("install", event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(() => self.skipWaiting())
+    );
 });
 
-// ── Clique na notificação ─────────────────────────────────
-self.addEventListener('notificationclick', e => {
-    e.notification.close();
-    // Libera blob do ícone imediatamente ao clicar
-    const iconUrl = e.notification.data?._iconUrl;
-    if (iconUrl) URL.revokeObjectURL(iconUrl);
-
-    e.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-            for (const c of list) {
-                if (c.url.startsWith(CLIENTE_URL) && c.focus) return c.focus();
-            }
-            return clients.openWindow(CLIENTE_URL);
-        })
+self.addEventListener("activate", event => {
+    event.waitUntil(
+        Promise.all([
+            self.clients.claim(),
+            limparCachesAntigos()
+        ])
     );
+});
+
+async function limparCachesAntigos() {
+    const nomes = await caches.keys();
+
+    await Promise.all(
+        nomes
+            .filter(nome => nome !== CACHE_NAME)
+            .map(nome => caches.delete(nome))
+    );
+}
+
+self.addEventListener("push", event => {
+    event.waitUntil(mostrarNotificacao(event));
+});
+
+async function mostrarNotificacao(event) {
+    let data = {};
+
+    try {
+        data = event.data ? event.data.json() : {};
+    } catch (erro) {
+        console.warn("[SW] Push não veio como JSON:", erro);
+
+        try {
+            data = {
+                mensagem: event.data ? event.data.text() : ""
+            };
+        } catch (_) {}
+    }
+
+    const titulo =
+        data.titulo ||
+        data.title ||
+        "Nova notificação";
+
+    const mensagem =
+        data.mensagem ||
+        data.body ||
+        "Você recebeu uma nova notificação.";
+
+    const notificacaoId =
+        data.notificacao_id ||
+        data.id ||
+        null;
+
+    const options = {
+        body: mensagem,
+
+        icon:
+            data.icon ||
+            "/icon-192.png",
+
+        badge:
+            data.badge ||
+            "/icon-192.png",
+
+        tag:
+            data.tag ||
+            (
+                notificacaoId
+                    ? `notificacao-${notificacaoId}`
+                    : "notificacao"
+            ),
+
+        renotify: true,
+
+        data: {
+            notificacao_id: notificacaoId,
+            tipo: data.tipo || "geral",
+            valor: data.valor ?? null,
+            url: data.url || data.link || "./"
+        }
+    };
+
+    await self.registration.showNotification(
+        titulo,
+        options
+    );
+});
+
+self.addEventListener("notificationclick", event => {
+    event.notification.close();
+
+    const url =
+        event.notification.data?.url ||
+        "./";
+
+    event.waitUntil(
+        abrirOuFocar(url)
+    );
+});
+
+async function abrirOuFocar(url) {
+    const clientes = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true
+    });
+
+    const destino = new URL(
+        url,
+        self.location.origin
+    );
+
+    for (const cliente of clientes) {
+        try {
+            const atual = new URL(cliente.url);
+
+            if (
+                atual.origin === destino.origin &&
+                "focus" in cliente
+            ) {
+                if ("navigate" in cliente) {
+                    await cliente.navigate(
+                        destino.href
+                    );
+                }
+
+                return cliente.focus();
+            }
+        } catch (_) {}
+    }
+
+    if (self.clients.openWindow) {
+        return self.clients.openWindow(
+            destino.href
+        );
+    }
+}
+
+self.addEventListener("message", event => {
+    if (event.data?.tipo === "ATIVAR_SW") {
+        self.skipWaiting();
+    }
 });
