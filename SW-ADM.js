@@ -1,157 +1,99 @@
-/* SW-ADM.js — Service Worker de notificações Push do ADM */
+/* ============================================================
+   SW-ADM.js — Service Worker de Push do ADM
+   Baseado no SW-PUSH-TESTE.js (que já provou funcionar).
+   Escopo: registrado em './' pelo index.html do ADM.
+   ============================================================ */
 
-const CACHE_NAME = 'sw-adm-v2';
+const CACHE_NAME = "sw-adm-v1";
 
-self.addEventListener('install', function(event) {
-    console.log('[SW-ADM] install');
-
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(function() {
-            return self.skipWaiting();
-        })
-    );
+/* ── INSTALL ── */
+self.addEventListener("install", event => {
+  console.log("[SW-ADM] 📦 install — instalando novo Service Worker do ADM...");
+  event.waitUntil((async () => {
+    await caches.open(CACHE_NAME);
+    await self.skipWaiting();
+    console.log("[SW-ADM] ✅ install concluído — skipWaiting() executado.");
+  })());
 });
 
-self.addEventListener('activate', function(event) {
-    console.log('[SW-ADM] activate');
-
-    event.waitUntil(
-        Promise.all([
-            self.clients.claim(),
-            caches.keys().then(function(nomes) {
-                return Promise.all(
-                    nomes
-                        .filter(function(nome) {
-                            return nome !== CACHE_NAME;
-                        })
-                        .map(function(nome) {
-                            return caches.delete(nome);
-                        })
-                );
-            })
-        ])
-    );
+/* ── ACTIVATE ── */
+self.addEventListener("activate", event => {
+  console.log("[SW-ADM] 🚀 activate — ativando Service Worker do ADM...");
+  event.waitUntil((async () => {
+    await self.clients.claim();
+    console.log("[SW-ADM] ✅ activate concluído — clients.claim() executado. SW assumiu o controle.");
+  })());
 });
 
-self.addEventListener('push', function(event) {
-    console.log('[SW-ADM] push recebido');
+/* ── PUSH ── */
+self.addEventListener("push", event => {
+  console.log("[SW-ADM] 📨 Evento 'push' recebido pelo Service Worker.");
 
-    event.waitUntil(mostrarNotificacao(event));
-});
+  event.waitUntil((async () => {
+    let payload = {};
 
-function mostrarNotificacao(event) {
-    var data = {};
-
+    // O backend (dynamic-function) envia: { notificacao: { titulo, mensagem, url, ... } }
     try {
-        data = event.data ? event.data.json() : {};
-    } catch (e) {
-        try {
-            data = {
-                mensagem: event.data ? event.data.text() : ''
-            };
-        } catch (_) {}
+      payload = event.data ? event.data.json() : {};
+    } catch (_) {
+      payload = { mensagem: event.data ? event.data.text() : "" };
     }
 
-    // Dados utilizados pelo novo sistema:
-    // titulo = cabeçalho
-    // mensagem = texto
-    // url = endereço aberto ao clicar
+    console.log("[SW-ADM] 📦 Payload bruto recebido:", JSON.stringify(payload));
 
-    var titulo = data.titulo || 'Nova notificação';
+    // Aceita tanto { notificacao: {...} } quanto o objeto direto, por segurança
+    const notificacao = payload.notificacao || payload;
 
-    var mensagem =
-        data.mensagem ||
-        'Você recebeu uma nova notificação.';
+    const titulo = notificacao.titulo || "🔔 ADM";
+    const mensagem = notificacao.mensagem || "Você tem uma nova notificação no ADM.";
+    const url = notificacao.url || "/";
 
-    var url = data.url || './';
+    console.log("[SW-ADM] 📝 Dados extraídos → titulo:", titulo, "| mensagem:", mensagem, "| url:", url);
 
-    var options = {
-        body: mensagem,
+    // Tag única por notificação: garante que uma NÃO substitua a outra
+    const tagUnica = "sw-adm-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
 
-        icon: data.icon || '/icon-192.png',
+    console.log("[SW-ADM] ⏳ Chamando showNotification()... tag:", tagUnica);
 
-        badge: data.badge || '/icon-192.png',
+    await self.registration.showNotification(titulo, {
+      body: mensagem,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: tagUnica,
+      renotify: true,
+      data: { url }
+    });
 
-        renotify: true,
-
-        data: {
-            url: url
-        }
-    };
-
-    return self.registration.showNotification(
-        titulo,
-        options
-    );
-}
-
-self.addEventListener('notificationclick', function(event) {
-    event.notification.close();
-
-    var url = './';
-
-    if (
-        event.notification.data &&
-        event.notification.data.url
-    ) {
-        url = event.notification.data.url;
-    }
-
-    event.waitUntil(
-        abrirOuFocar(url)
-    );
+    console.log("[SW-ADM] ✅ showNotification() executado com sucesso para tag:", tagUnica);
+  })());
 });
 
-function abrirOuFocar(url) {
-    return self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true
-    }).then(function(clientes) {
+/* ── NOTIFICATION CLICK ── */
+self.addEventListener("notificationclick", event => {
+  console.log("[SW-ADM] 🖱️ notificationclick — usuário clicou na notificação. tag:", event.notification.tag);
 
-        var destino;
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
 
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    console.log("[SW-ADM] 🔎 Janelas/abas encontradas para focar:", allClients.length);
+
+    for (const client of allClients) {
+      if ("focus" in client) {
         try {
-            destino = new URL(
-                url,
-                self.location.origin
-            );
+          await client.navigate(new URL(url, self.location.origin).href);
         } catch (_) {
-            destino = {
-                href: url,
-                origin: self.location.origin
-            };
+          console.warn("[SW-ADM] ⚠️ Não foi possível navegar na aba existente, apenas focando.");
         }
-
-        for (var i = 0; i < clientes.length; i++) {
-            var cliente = clientes[i];
-
-            try {
-                var atual = new URL(cliente.url);
-
-                if (
-                    atual.origin === destino.origin &&
-                    'focus' in cliente
-                ) {
-                    if ('navigate' in cliente) {
-                        cliente.navigate(destino.href);
-                    }
-
-                    return cliente.focus();
-                }
-            } catch (_) {}
-        }
-
-        if (self.clients.openWindow) {
-            return self.clients.openWindow(destino.href);
-        }
-    });
-}
-
-self.addEventListener('message', function(event) {
-    if (
-        event.data &&
-        event.data.tipo === 'ATIVAR_SW'
-    ) {
-        self.skipWaiting();
+        console.log("[SW-ADM] ✅ Aba existente focada e navegada para:", url);
+        return client.focus();
+      }
     }
+
+    if (self.clients.openWindow) {
+      console.log("[SW-ADM] 🆕 Nenhuma aba aberta — abrindo nova janela em:", url);
+      return self.clients.openWindow(new URL(url, self.location.origin).href);
+    }
+  })());
 });
